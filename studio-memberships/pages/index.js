@@ -91,11 +91,7 @@ export default function Home() {
               />
             </div>
             {pwError && <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 10 }}>{pwError}</div>}
-            <button
-              onClick={handleLogin}
-              disabled={pwLoading}
-              style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', background: '#1B8DB3', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' }}
-            >
+            <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', background: '#1B8DB3', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {pwLoading ? 'Checking…' : 'Log in'}
             </button>
           </div>
@@ -118,6 +114,7 @@ function Dashboard() {
   const [detailMember, setDetailMember] = useState(null);
   const [detailBack, setDetailBack] = useState('members');
   const [flagTab, setFlagTab] = useState('open');
+  const [memberFilter, setMemberFilter] = useState('active');
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [flagForm, setFlagForm] = useState({ memberId: '', reason: 'card', note: '' });
@@ -152,31 +149,24 @@ function Dashboard() {
   }
 
   function openFlags() { return flags.filter(f => !f.resolved); }
-
-  function memberFlags(id) {
-    const sid = String(id);
-    return flags.filter(f => !f.resolved && String(f.memberId) === sid);
-  }
+  function memberFlags(id) { return flags.filter(f => !f.resolved && String(f.memberId) === String(id)); }
+  function cardFlags() { return openFlags().filter(f => f.reason === 'card'); }
+  function otherFlags() { return openFlags().filter(f => f.reason !== 'card'); }
 
   function nav(p) {
-    setPage(p);
-    setSearch('');
-    setShowSearchDrop(false);
-    setShowFlagModal(false);
-    setShowPkgModal(false);
+    setPage(p); setSearch(''); setShowSearchDrop(false);
+    setShowFlagModal(false); setShowPkgModal(false);
   }
 
   function viewMember(m, back) {
-    setDetailMember(m);
-    setDetailBack(back || page);
-    setPage('detail');
+    setDetailMember(m); setDetailBack(back || page); setPage('detail');
   }
 
   function handleSearch(val) {
     setSearch(val);
     if (!val.trim()) { setShowSearchDrop(false); return; }
     const q = val.toLowerCase();
-    const res = members.filter(m => (fullName(m) + m.email + m.pkg + m.phone).toLowerCase().includes(q)).slice(0, 6);
+    const res = members.filter(m => (fullName(m) + m.email + (m.pkg||'') + (m.phone||'')).toLowerCase().includes(q)).slice(0, 6);
     setSearchResults(res);
     setShowSearchDrop(res.length > 0);
   }
@@ -229,20 +219,16 @@ function Dashboard() {
   function handleCSV(e) {
     const file = e.target.files[0];
     if (!file) return;
-    setImporting(true);
-    setImportMsg('');
+    setImporting(true); setImportMsg('');
     Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
+      header: true, skipEmptyLines: true,
       complete: async (results) => {
         try {
           const res = await fetch('/api/members/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members: results.data }) });
           const data = await res.json();
-          setImportMsg(`✓ Imported ${data.inserted} members successfully.`);
+          setImportMsg(`✓ Imported ${data.inserted} new, updated ${data.updated}.`);
           fetchAll();
-        } catch (err) {
-          setImportMsg('Import failed. Check your CSV format.');
-        }
+        } catch { setImportMsg('Import failed. Check your CSV format.'); }
         setImporting(false);
       }
     });
@@ -251,12 +237,54 @@ function Dashboard() {
   const activeCount = members.filter(m => m.status === 'active').length;
   const openFlagCount = openFlags().length;
   const expiringCount = members.filter(m => m.status === 'expiring').length;
-  const revenue = members.filter(m => m.status === 'active' || m.status === 'expiring').reduce((a, m) => {
+  const revenue = members.filter(m => m.status === 'active').reduce((a, m) => {
     const pkg = packages.find(p => p.name === m.pkg);
     return a + (pkg ? pkg.price : 0);
   }, 0);
 
+  const filteredMembers = members.filter(m => {
+    if (memberFilter === 'all') return true;
+    if (memberFilter === 'active') return m.status === 'active';
+    if (memberFilter === 'paused') return m.status === 'paused';
+    if (memberFilter === 'expiring') return m.status === 'expiring';
+    return true;
+  });
+
   const S = styles;
+
+  function FlagSection({ title, flagList, color, icon }) {
+    if (flagList.length === 0) return null;
+    return (
+      <div style={{ ...S.card, borderLeft: `3px solid ${color}`, marginBottom: 16 }}>
+        <div style={{ ...S.cardTitle, color }}>
+          <i className={`ti ${icon}`} style={{ fontSize: 13, marginRight: 6 }} />{title}
+          <span style={{ marginLeft: 8, background: color + '22', color, borderRadius: 10, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>{flagList.length}</span>
+        </div>
+        {flagList.map(f => {
+          const m = members.find(x => String(x._id) === String(f.memberId));
+          if (!m) return null;
+          return (
+            <div key={String(f._id)} style={S.flagRow}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ ...S.avatar }}>{ini(m)}</div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
+                    <FlagPill reason={f.reason} />
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{f.note || 'No note'} · {f.date}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={S.btnSm} onClick={() => viewMember(m, page)}>View</button>
+                <button style={{ ...S.btnSm, color: '#1D9E75', borderColor: '#9FE1CB' }} onClick={() => resolveFlag(f)}>Resolve</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -266,7 +294,6 @@ function Dashboard() {
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
       </Head>
       <div style={S.app}>
-        {/* ── Sidebar ── */}
         <div style={S.sidebar}>
           <div style={S.logo}>
             <div style={{ background: '#fff', borderRadius: 5, padding: '8px 12px', border: '2px solid rgba(255,255,255,0.25)' }}>
@@ -274,7 +301,6 @@ function Dashboard() {
               <div style={S.logoSub}>MOBILITY STUDIO · MEMBERS</div>
             </div>
           </div>
-
           <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #e5e5e5', position: 'relative' }} ref={searchRef}>
             <div style={{ position: 'relative' }}>
               <i className="ti ti-search" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#999' }} />
@@ -294,7 +320,6 @@ function Dashboard() {
               </div>
             )}
           </div>
-
           <div style={{ flex: 1, overflowY: 'auto', paddingTop: 6 }}>
             {[
               { id: 'dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
@@ -318,14 +343,12 @@ function Dashboard() {
             </div>
             {importMsg && <div style={{ fontSize: 11, color: '#1B8DB3', padding: '4px 18px 8px', lineHeight: 1.4 }}>{importMsg}</div>}
           </div>
-
           <div style={S.sidebarFooter}>
             <div style={{ fontSize: 10, color: '#aaa' }}>Logged in as</div>
             <div style={{ fontSize: 12, fontWeight: 500, marginTop: 2 }}>Staff admin</div>
           </div>
         </div>
 
-        {/* ── Main ── */}
         <div style={S.main}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888', fontSize: 14 }}>
@@ -354,34 +377,13 @@ function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  <div style={S.card}>
-                    <div style={S.cardTitle}><i className="ti ti-flag" style={{ fontSize: 13, color: '#E24B4A', marginRight: 6 }} />Open flags</div>
-                    {openFlags().length === 0 ? (
-                      <div style={S.empty}>No open flags — all clear 🎉</div>
-                    ) : openFlags().slice(0, 5).map(f => {
-                      const m = members.find(x => String(x._id) === String(f.memberId));
-                      if (!m) return null;
-                      return (
-                        <div key={String(f._id)} style={S.flagRow}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={S.avatar}>{ini(m)}</div>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
-                                <FlagPill reason={f.reason} />
-                              </div>
-                              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{f.note || 'No note'} · {f.date}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={S.btnSm} onClick={() => viewMember(m, 'dashboard')}>View</button>
-                            <button style={{ ...S.btnSm, color: '#1D9E75', borderColor: '#9FE1CB' }} onClick={() => resolveFlag(f)}>Resolve</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {openFlags().length > 5 && <div style={{ paddingTop: 8 }}><span style={S.alink} onClick={() => nav('flags')}>See all flags →</span></div>}
-                  </div>
+
+                  <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
+                  <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-flag" />
+
+                  {openFlagCount === 0 && (
+                    <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>
+                  )}
                 </div>
               )}
 
@@ -389,9 +391,30 @@ function Dashboard() {
               {page === 'members' && (
                 <div>
                   <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({members.length})</span></div>
+                    <div style={S.pageTitle}>
+                      Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({filteredMembers.length})</span>
+                    </div>
                     <button style={S.btnPrimary} onClick={() => nav('addmember')}><i className="ti ti-user-plus" />Add member</button>
                   </div>
+
+                  {/* Filter tabs */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
+                      { key: 'paused', label: `Paused (${members.filter(m => m.status === 'paused').length})` },
+                      { key: 'expiring', label: `Expiring (${members.filter(m => m.status === 'expiring').length})` },
+                      { key: 'all', label: `All (${members.length})` },
+                    ].map(f => (
+                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{
+                        padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
+                        background: memberFilter === f.key ? '#1B8DB3' : '#fff',
+                        color: memberFilter === f.key ? '#fff' : '#666',
+                        border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd',
+                        fontWeight: memberFilter === f.key ? 600 : 400,
+                      }}>{f.label}</button>
+                    ))}
+                  </div>
+
                   <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                     <table style={S.table}>
                       <thead>
@@ -399,33 +422,38 @@ function Dashboard() {
                           <th style={{ ...S.th, width: '25%' }}>Member</th>
                           <th style={{ ...S.th, width: '28%' }}>Package</th>
                           <th style={{ ...S.th, width: '10%' }}>Credits</th>
-                          <th style={{ ...S.th, width: '12%' }}>Billing</th>
-                          <th style={{ ...S.th, width: '13%' }}>Status</th>
+                          <th style={{ ...S.th, width: '12%' }}>Status</th>
+                          <th style={{ ...S.th, width: '13%' }}>Flags</th>
                           <th style={{ ...S.th, width: '12%' }}></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {members.length === 0 ? (
-                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', fontSize: 13, color: '#aaa' }}>No members yet. Add one or import a CSV.</td></tr>
-                        ) : members.map(m => {
+                        {filteredMembers.length === 0 ? (
+                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', fontSize: 13, color: '#aaa' }}>No members in this category.</td></tr>
+                        ) : filteredMembers.map(m => {
                           const mf = memberFlags(m._id);
+                          const hasCardFlag = mf.some(f => f.reason === 'card');
                           return (
-                            <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                            <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0', background: hasCardFlag ? '#FFF8F8' : 'transparent' }}>
                               <td style={S.td}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                                  <div style={S.avatar}>{ini(m)}</div>
+                                  <div style={{ ...S.avatar, ...(hasCardFlag ? { background: '#FCEBEB', color: '#A32D2D' } : {}) }}>{ini(m)}</div>
                                   <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {fullName(m)} {mf.length > 0 && <i className="ti ti-flag" style={{ fontSize: 11, color: '#E24B4A' }} />}
-                                    </div>
+                                    <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName(m)}</div>
                                     <div style={{ fontSize: 10, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.email}</div>
                                   </div>
                                 </div>
                               </td>
-                              <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{m.pkg}</td>
-                              <td style={{ ...S.td, fontSize: 12 }}>{m.credits !== null && m.credits !== undefined ? m.credits : '∞'}</td>
-                              <td style={{ ...S.td, fontSize: 12, color: '#888' }}>{m.billing || '—'}</td>
+                              <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{m.pkg || '—'}</td>
+                              <td style={{ ...S.td, fontSize: 12 }}>{m.credits !== null && m.credits !== undefined ? m.credits : '—'}</td>
                               <td style={S.td}><StatusBadge status={m.status} /></td>
+                              <td style={S.td}>
+                                {mf.length > 0 ? (
+                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                    {mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
+                                  </div>
+                                ) : <span style={{ fontSize: 11, color: '#ccc' }}>—</span>}
+                              </td>
                               <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'members')}>View →</span></td>
                             </tr>
                           );
@@ -445,6 +473,15 @@ function Dashboard() {
                       <i className="ti ti-plus" />Add flag
                     </button>
                   </div>
+
+                  {flagTab === 'open' && (
+                    <>
+                      <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
+                      <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
+                      {openFlagCount === 0 && <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>}
+                    </>
+                  )}
+
                   <div style={S.tabs}>
                     {['open', 'resolved'].map(t => (
                       <div key={t} style={{ ...S.tab, ...(flagTab === t ? S.tabActive : {}) }} onClick={() => setFlagTab(t)}>
@@ -452,38 +489,33 @@ function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  <div style={S.card}>
-                    {flags.filter(f => f.resolved === (flagTab === 'resolved')).length === 0 ? (
-                      <div style={S.empty}>{flagTab === 'open' ? 'No open flags.' : 'No resolved flags yet.'}</div>
-                    ) : flags.filter(f => f.resolved === (flagTab === 'resolved')).map(f => {
-                      const m = members.find(x => String(x._id) === String(f.memberId));
-                      if (!m) return null;
-                      return (
-                        <div key={String(f._id)} style={{ ...S.flagRow, opacity: f.resolved ? 0.6 : 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                            <div style={S.avatar}>{ini(m)}</div>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
-                                <FlagPill reason={f.reason} />
-                                {f.resolved && <span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span>}
+
+                  {flagTab === 'resolved' && (
+                    <div style={S.card}>
+                      {flags.filter(f => f.resolved).length === 0 ? (
+                        <div style={S.empty}>No resolved flags yet.</div>
+                      ) : flags.filter(f => f.resolved).map(f => {
+                        const m = members.find(x => String(x._id) === String(f.memberId));
+                        if (!m) return null;
+                        return (
+                          <div key={String(f._id)} style={{ ...S.flagRow, opacity: 0.6 }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              <div style={S.avatar}>{ini(m)}</div>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
+                                  <FlagPill reason={f.reason} />
+                                  <span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Flagged {f.date}</div>
+                                {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 12, color: '#666', marginTop: 5 }}>{f.note}</div>}
                               </div>
-                              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Flagged {f.date}</div>
-                              {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 12, color: '#666', marginTop: 5 }}>{f.note}</div>}
                             </div>
                           </div>
-                          {!f.resolved && (
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                              <button style={S.btnSm} onClick={() => viewMember(m, 'flags')}>View</button>
-                              <button style={{ ...S.btnSm, color: '#1D9E75', borderColor: '#9FE1CB' }} onClick={() => resolveFlag(f)}>
-                                <i className="ti ti-check" />Resolve
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -499,15 +531,11 @@ function Dashboard() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <div style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
-                            {p.type} · {p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}
-                          </div>
+                          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.type} · {p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                           <div style={{ fontSize: 17, fontWeight: 500 }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
-                          <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}>
-                            <i className="ti ti-trash" />
-                          </button>
+                          <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
                         </div>
                       </div>
                     </div>
@@ -521,44 +549,22 @@ function Dashboard() {
                   <div style={S.pageHeader}><div style={S.pageTitle}>Add new member</div></div>
                   <div style={{ ...S.card, maxWidth: 520 }}>
                     <div style={S.formRow}>
-                      <div style={S.formGroup}>
-                        <label style={S.label}>First name</label>
-                        <input style={S.input} value={newMember.firstName} onChange={e => setNewMember(p => ({ ...p, firstName: e.target.value }))} placeholder="Sarah" />
-                      </div>
-                      <div style={S.formGroup}>
-                        <label style={S.label}>Last name</label>
-                        <input style={S.input} value={newMember.lastName} onChange={e => setNewMember(p => ({ ...p, lastName: e.target.value }))} placeholder="Miller" />
-                      </div>
+                      <div style={S.formGroup}><label style={S.label}>First name</label><input style={S.input} value={newMember.firstName} onChange={e => setNewMember(p => ({ ...p, firstName: e.target.value }))} placeholder="Sarah" /></div>
+                      <div style={S.formGroup}><label style={S.label}>Last name</label><input style={S.input} value={newMember.lastName} onChange={e => setNewMember(p => ({ ...p, lastName: e.target.value }))} placeholder="Miller" /></div>
                     </div>
-                    <div style={S.formGroup}>
-                      <label style={S.label}>Email</label>
-                      <input style={S.input} type="email" value={newMember.email} onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))} placeholder="sarah@email.com" />
-                    </div>
-                    <div style={S.formGroup}>
-                      <label style={S.label}>Phone</label>
-                      <input style={S.input} value={newMember.phone} onChange={e => setNewMember(p => ({ ...p, phone: e.target.value }))} placeholder="(617) 555-0100" />
-                    </div>
+                    <div style={S.formGroup}><label style={S.label}>Email</label><input style={S.input} type="email" value={newMember.email} onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))} placeholder="sarah@email.com" /></div>
+                    <div style={S.formGroup}><label style={S.label}>Phone</label><input style={S.input} value={newMember.phone} onChange={e => setNewMember(p => ({ ...p, phone: e.target.value }))} placeholder="(617) 555-0100" /></div>
                     <div style={S.formRow}>
-                      <div style={S.formGroup}>
-                        <label style={S.label}>Package</label>
+                      <div style={S.formGroup}><label style={S.label}>Package</label>
                         <select style={S.input} value={newMember.pkg} onChange={e => setNewMember(p => ({ ...p, pkg: e.target.value }))}>
                           <option value="">Select…</option>
                           {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
                         </select>
                       </div>
-                      <div style={S.formGroup}>
-                        <label style={S.label}>Start date</label>
-                        <input style={S.input} type="date" value={newMember.start} onChange={e => setNewMember(p => ({ ...p, start: e.target.value }))} />
-                      </div>
+                      <div style={S.formGroup}><label style={S.label}>Start date</label><input style={S.input} type="date" value={newMember.start} onChange={e => setNewMember(p => ({ ...p, start: e.target.value }))} /></div>
                     </div>
-                    <div style={S.formGroup}>
-                      <label style={S.label}>Card on file (last 4)</label>
-                      <input style={S.input} maxLength={4} value={newMember.card} onChange={e => setNewMember(p => ({ ...p, card: e.target.value }))} placeholder="4242" />
-                    </div>
-                    <div style={S.formGroup}>
-                      <label style={S.label}>Notes</label>
-                      <textarea style={{ ...S.input, resize: 'vertical' }} rows={2} value={newMember.notes} onChange={e => setNewMember(p => ({ ...p, notes: e.target.value }))} placeholder="Health notes, goals, preferences…" />
-                    </div>
+                    <div style={S.formGroup}><label style={S.label}>Card on file (last 4)</label><input style={S.input} maxLength={4} value={newMember.card} onChange={e => setNewMember(p => ({ ...p, card: e.target.value }))} placeholder="4242" /></div>
+                    <div style={S.formGroup}><label style={S.label}>Notes</label><textarea style={{ ...S.input, resize: 'vertical' }} rows={2} value={newMember.notes} onChange={e => setNewMember(p => ({ ...p, notes: e.target.value }))} placeholder="Health notes, goals, preferences…" /></div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                       <button style={S.btnPrimary} onClick={addMember}><i className="ti ti-check" />Save member</button>
                       <button style={S.btn} onClick={() => nav('members')}>Cancel</button>
@@ -587,7 +593,7 @@ function Dashboard() {
                         <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>{m.email} · {m.phone}</div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
                           <StatusBadge status={m.status} />
-                          {mf.length > 0 && <span style={{ background: '#FCEBEB', color: '#A32D2D', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}><i className="ti ti-flag" style={{ fontSize: 9 }} /> {mf.length} open flag{mf.length > 1 ? 's' : ''}</span>}
+                          {mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
                         </div>
                       </div>
                     </div>
@@ -599,7 +605,6 @@ function Dashboard() {
                         {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span>${pkg.price}{pkg.sessions > 1 ? '/mo' : ''}</span></div>}
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Next billing</span><span>{m.billing || '—'}</span></div>
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Card on file</span><span>···· {m.card || '????'}</span></div>
-                        {m.status === 'declined' && <div style={{ ...S.banner, ...S.bannerDanger, marginTop: 10, fontSize: 11 }}><i className="ti ti-credit-card-off" />Card declined — follow-up needed</div>}
                         {m.credits != null && (
                           <>
                             <div style={S.detailRow}><span style={{ color: '#888' }}>Credits left</span><span>{m.credits}</span></div>
@@ -643,17 +648,15 @@ function Dashboard() {
           <div style={S.modal}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 15, fontWeight: 500 }}>Add flag</div>
-              <button style={{ ...S.btnSm, border: 'none', fontSize: 16 }} onClick={() => setShowFlagModal(false)}><i className="ti ti-x" /></button>
+              <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowFlagModal(false)}><i className="ti ti-x" /></button>
             </div>
-            <div style={S.formGroup}>
-              <label style={S.label}>Member</label>
+            <div style={S.formGroup}><label style={S.label}>Member</label>
               <select style={S.input} value={flagForm.memberId} onChange={e => setFlagForm(p => ({ ...p, memberId: e.target.value }))}>
                 <option value="">Select…</option>
                 {members.map(m => <option key={String(m._id)} value={String(m._id)}>{fullName(m)}</option>)}
               </select>
             </div>
-            <div style={S.formGroup}>
-              <label style={S.label}>Reason</label>
+            <div style={S.formGroup}><label style={S.label}>Reason</label>
               <select style={S.input} value={flagForm.reason} onChange={e => setFlagForm(p => ({ ...p, reason: e.target.value }))}>
                 <option value="card">Card declined</option>
                 <option value="expiring">Membership expiring</option>
@@ -661,11 +664,10 @@ function Dashboard() {
                 <option value="manual">Manual note</option>
               </select>
             </div>
-            <div style={S.formGroup}>
-              <label style={S.label}>Note (optional)</label>
+            <div style={S.formGroup}><label style={S.label}>Note (optional)</label>
               <input style={S.input} value={flagForm.note} onChange={e => setFlagForm(p => ({ ...p, note: e.target.value }))} placeholder="Add context…" />
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
               <button style={S.btnPrimary} onClick={addFlag}><i className="ti ti-flag" />Save flag</button>
               <button style={S.btn} onClick={() => setShowFlagModal(false)}>Cancel</button>
             </div>
@@ -679,36 +681,21 @@ function Dashboard() {
           <div style={S.modal}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 15, fontWeight: 500 }}>New package</div>
-              <button style={{ ...S.btnSm, border: 'none', fontSize: 16 }} onClick={() => setShowPkgModal(false)}><i className="ti ti-x" /></button>
+              <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowPkgModal(false)}><i className="ti ti-x" /></button>
             </div>
             <div style={S.formRow}>
-              <div style={S.formGroup}>
-                <label style={S.label}>Name</label>
-                <input style={S.input} value={pkgForm.name} onChange={e => setPkgForm(p => ({ ...p, name: e.target.value }))} placeholder="4x/month" />
-              </div>
-              <div style={S.formGroup}>
-                <label style={S.label}>Price ($)</label>
-                <input style={S.input} type="number" value={pkgForm.price} onChange={e => setPkgForm(p => ({ ...p, price: e.target.value }))} placeholder="170" />
-              </div>
+              <div style={S.formGroup}><label style={S.label}>Name</label><input style={S.input} value={pkgForm.name} onChange={e => setPkgForm(p => ({ ...p, name: e.target.value }))} placeholder="4x/month" /></div>
+              <div style={S.formGroup}><label style={S.label}>Price ($)</label><input style={S.input} type="number" value={pkgForm.price} onChange={e => setPkgForm(p => ({ ...p, price: e.target.value }))} placeholder="170" /></div>
             </div>
             <div style={S.formRow}>
-              <div style={S.formGroup}>
-                <label style={S.label}>Sessions/mo</label>
-                <input style={S.input} type="number" value={pkgForm.sessions} onChange={e => setPkgForm(p => ({ ...p, sessions: e.target.value }))} placeholder="4" />
-              </div>
-              <div style={S.formGroup}>
-                <label style={S.label}>Type</label>
+              <div style={S.formGroup}><label style={S.label}>Sessions/mo</label><input style={S.input} type="number" value={pkgForm.sessions} onChange={e => setPkgForm(p => ({ ...p, sessions: e.target.value }))} placeholder="4" /></div>
+              <div style={S.formGroup}><label style={S.label}>Type</label>
                 <select style={S.input} value={pkgForm.type} onChange={e => setPkgForm(p => ({ ...p, type: e.target.value }))}>
-                  <option>Stretch therapy</option>
-                  <option>Massage therapy</option>
-                  <option>Combo</option>
+                  <option>Stretch therapy</option><option>Massage therapy</option><option>Combo</option>
                 </select>
               </div>
             </div>
-            <div style={S.formGroup}>
-              <label style={S.label}>Notes</label>
-              <input style={S.input} value={pkgForm.notes} onChange={e => setPkgForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. First responder rate" />
-            </div>
+            <div style={S.formGroup}><label style={S.label}>Notes</label><input style={S.input} value={pkgForm.notes} onChange={e => setPkgForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. First responder rate" /></div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button style={S.btnPrimary} onClick={addPackage}><i className="ti ti-check" />Save</button>
               <button style={S.btn} onClick={() => setShowPkgModal(false)}>Cancel</button>
@@ -740,13 +727,12 @@ const styles = {
   metricValue: { fontSize: 22, fontWeight: 600 },
   metricSub: { fontSize: 10, color: '#bbb', marginTop: 3 },
   card: { background: '#fff', border: '0.5px solid #efefef', borderRadius: 10, padding: '14px 16px', marginBottom: 12 },
-  cardTitle: { fontSize: 13, fontWeight: 500, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 },
+  cardTitle: { fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center' },
   flagRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid #f3f3f3' },
   table: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' },
   th: { textAlign: 'left', fontWeight: 500, fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.05em', padding: '10px 10px', borderBottom: '0.5px solid #f0f0f0' },
   td: { padding: '9px 10px', verticalAlign: 'middle' },
   avatar: { width: 28, height: 28, borderRadius: '50%', background: '#D6EEF7', color: '#1B8DB3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 500, flexShrink: 0 },
-  avatarFlag: { background: '#FCEBEB', color: '#A32D2D' },
   input: { fontFamily: 'system-ui, sans-serif', fontSize: 13, color: '#1a1a1a', background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '7px 10px', width: '100%', outline: 'none', boxSizing: 'border-box' },
   formRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 },
   formGroup: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 },
