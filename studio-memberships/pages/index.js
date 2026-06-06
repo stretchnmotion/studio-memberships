@@ -21,6 +21,7 @@ function StatusBadge({ status }) {
     declined: { bg: '#FCEBEB', color: '#A32D2D', label: 'Declined' },
     expiring: { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
     paused: { bg: '#F1EFE8', color: '#5F5E5A', label: 'Paused' },
+    inactive: { bg: '#F0F0F0', color: '#888', label: 'Inactive' },
   };
   const s = map[status] || map.active;
   return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>{s.label}</span>;
@@ -44,61 +45,45 @@ export default function Home() {
   const [pwLoading, setPwLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('studio_auth') === 'true') {
-      setAuthed(true);
-    }
+    if (typeof window !== 'undefined' && sessionStorage.getItem('studio_auth') === 'true') setAuthed(true);
   }, []);
 
   async function handleLogin() {
-    setPwLoading(true);
-    setPwError('');
+    setPwLoading(true); setPwError('');
     const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwInput }) });
-    if (res.ok) {
-      sessionStorage.setItem('studio_auth', 'true');
-      setAuthed(true);
-    } else {
-      setPwError('Incorrect password. Try again.');
-    }
+    if (res.ok) { sessionStorage.setItem('studio_auth', 'true'); setAuthed(true); }
+    else setPwError('Incorrect password. Try again.');
     setPwLoading(false);
   }
 
-  if (!authed) {
-    return (
-      <>
-        <Head>
-          <title>Stretch N Motion — Staff Login</title>
-          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
-        </Head>
-        <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1B8DB3', fontFamily: 'system-ui, sans-serif' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: '2rem', width: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
-            <div style={{ marginBottom: 24, textAlign: 'center' }}>
-              <div style={{ background: '#1B8DB3', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'inline-block' }}>
-                <div style={{ fontSize: 18, fontWeight: 900, fontStyle: 'italic', color: '#fff', textTransform: 'uppercase', letterSpacing: '-0.5px', lineHeight: 1.1 }}>STRETCH N<br/>MOTION</div>
-                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)', marginTop: 3, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600 }}>MOBILITY STUDIO · MEMBERS</div>
-              </div>
-              <div style={{ fontSize: 13, color: '#888' }}>Staff access only</div>
+  if (!authed) return (
+    <>
+      <Head>
+        <title>Stretch N Motion — Staff Login</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
+      </Head>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1B8DB3 0%, #0d6a8a 100%)', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '2.5rem', width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ marginBottom: 28, textAlign: 'center' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', borderRadius: 10, padding: '14px 20px', marginBottom: 18, display: 'inline-block', boxShadow: '0 4px 12px rgba(27,141,179,0.3)' }}>
+              <div style={{ fontSize: 20, fontWeight: 900, fontStyle: 'italic', color: '#fff', textTransform: 'uppercase', letterSpacing: '-0.5px', lineHeight: 1.1 }}>STRETCH N<br/>MOTION</div>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)', marginTop: 4, letterSpacing: '2px', textTransform: 'uppercase', fontWeight: 600 }}>MOBILITY STUDIO · MEMBERS</div>
             </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>Password</label>
-              <input
-                type="password"
-                style={{ fontFamily: 'system-ui, sans-serif', fontSize: 13, color: '#1a1a1a', background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: '8px 10px', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-                value={pwInput}
-                onChange={e => setPwInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="Enter staff password"
-                autoFocus
-              />
-            </div>
-            {pwError && <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 10 }}>{pwError}</div>}
-            <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', background: '#1B8DB3', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              {pwLoading ? 'Checking…' : 'Log in'}
-            </button>
+            <div style={{ fontSize: 13, color: '#999', fontWeight: 500 }}>Staff access only</div>
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: '#999', display: 'block', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Password</label>
+            <input type="password" style={{ fontFamily: 'system-ui, sans-serif', fontSize: 14, color: '#1a1a1a', background: '#F8FAFB', border: '1.5px solid #E8ECF0', borderRadius: 10, padding: '10px 12px', width: '100%', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
+              value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="Enter staff password" autoFocus />
+          </div>
+          {pwError && <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 12, background: '#FFF0F0', padding: '8px 12px', borderRadius: 8 }}>{pwError}</div>}
+          <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(27,141,179,0.3)', letterSpacing: '0.3px' }}>
+            {pwLoading ? 'Checking…' : 'Log in →'}
+          </button>
         </div>
-      </>
-    );
-  }
+      </div>
+    </>
+  );
 
   return <Dashboard />;
 }
@@ -121,7 +106,6 @@ function Dashboard() {
   const [pkgForm, setPkgForm] = useState({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
   const [newMember, setNewMember] = useState({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '' });
   const [nmSuccess, setNmSuccess] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState('');
   const [loading, setLoading] = useState(true);
   const fileRef = useRef();
@@ -153,22 +137,15 @@ function Dashboard() {
   function cardFlags() { return openFlags().filter(f => f.reason === 'card'); }
   function otherFlags() { return openFlags().filter(f => f.reason !== 'card'); }
 
-  function nav(p) {
-    setPage(p); setSearch(''); setShowSearchDrop(false);
-    setShowFlagModal(false); setShowPkgModal(false);
-  }
-
-  function viewMember(m, back) {
-    setDetailMember(m); setDetailBack(back || page); setPage('detail');
-  }
+  function nav(p) { setPage(p); setSearch(''); setShowSearchDrop(false); setShowFlagModal(false); setShowPkgModal(false); }
+  function viewMember(m, back) { setDetailMember(m); setDetailBack(back || page); setPage('detail'); }
 
   function handleSearch(val) {
     setSearch(val);
     if (!val.trim()) { setShowSearchDrop(false); return; }
     const q = val.toLowerCase();
     const res = members.filter(m => (fullName(m) + m.email + (m.pkg||'') + (m.phone||'')).toLowerCase().includes(q)).slice(0, 6);
-    setSearchResults(res);
-    setShowSearchDrop(res.length > 0);
+    setSearchResults(res); setShowSearchDrop(res.length > 0);
   }
 
   async function addMember() {
@@ -177,14 +154,14 @@ function Dashboard() {
     const doc = await res.json();
     setMembers(prev => [...prev, doc]);
     setNewMember({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '' });
-    setNmSuccess(true);
-    setTimeout(() => setNmSuccess(false), 3000);
+    setNmSuccess(true); setTimeout(() => setNmSuccess(false), 3000);
   }
 
-  async function updateMemberStatus(m, status) {
-    await fetch('/api/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...m, status }) });
-    setMembers(prev => prev.map(x => String(x._id) === String(m._id) ? { ...x, status } : x));
-    setDetailMember(prev => prev && String(prev._id) === String(m._id) ? { ...prev, status } : prev);
+  async function updateMember(m, updates) {
+    const updated = { ...m, ...updates };
+    await fetch('/api/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+    setMembers(prev => prev.map(x => String(x._id) === String(m._id) ? updated : x));
+    setDetailMember(prev => prev && String(prev._id) === String(m._id) ? updated : prev);
   }
 
   async function removeMember(m) {
@@ -199,9 +176,7 @@ function Dashboard() {
     if (!flagForm.memberId) { alert('Select a member.'); return; }
     const res = await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...flagForm, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }) });
     const doc = await res.json();
-    setFlags(prev => [doc, ...prev]);
-    setShowFlagModal(false);
-    setFlagForm({ memberId: '', reason: 'card', note: '' });
+    setFlags(prev => [doc, ...prev]); setShowFlagModal(false); setFlagForm({ memberId: '', reason: 'card', note: '' });
   }
 
   async function resolveFlag(f) {
@@ -212,24 +187,21 @@ function Dashboard() {
   function addPackage() {
     if (!pkgForm.name) { alert('Package name required.'); return; }
     setPackages(prev => [...prev, { ...pkgForm, price: parseInt(pkgForm.price) || 0, sessions: parseInt(pkgForm.sessions) || null }]);
-    setShowPkgModal(false);
-    setPkgForm({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
+    setShowPkgModal(false); setPkgForm({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
   }
 
   function handleCSV(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImporting(true); setImportMsg('');
+    const file = e.target.files[0]; if (!file) return;
+    setImportMsg('');
     Papa.parse(file, {
       header: true, skipEmptyLines: true,
       complete: async (results) => {
         try {
           const res = await fetch('/api/members/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members: results.data }) });
           const data = await res.json();
-          setImportMsg(`✓ Imported ${data.inserted} new, updated ${data.updated}.`);
+          setImportMsg(`✓ ${data.inserted} new, ${data.updated} updated`);
           fetchAll();
-        } catch { setImportMsg('Import failed. Check your CSV format.'); }
-        setImporting(false);
+        } catch { setImportMsg('Import failed.'); }
       }
     });
   }
@@ -237,9 +209,9 @@ function Dashboard() {
   const activeCount = members.filter(m => m.status === 'active').length;
   const openFlagCount = openFlags().length;
   const expiringCount = members.filter(m => m.status === 'expiring').length;
+  const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
   const revenue = members.filter(m => m.status === 'active').reduce((a, m) => {
-    const pkg = packages.find(p => p.name === m.pkg);
-    return a + (pkg ? pkg.price : 0);
+    const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
   }, 0);
 
   const filteredMembers = members.filter(m => {
@@ -255,22 +227,20 @@ function Dashboard() {
   function FlagSection({ title, flagList, color, icon }) {
     if (flagList.length === 0) return null;
     return (
-      <div style={{ ...S.card, borderLeft: `3px solid ${color}`, marginBottom: 16 }}>
+      <div style={{ ...S.card, borderLeft: `3px solid ${color}` }}>
         <div style={{ ...S.cardTitle, color }}>
           <i className={`ti ${icon}`} style={{ fontSize: 13, marginRight: 6 }} />{title}
           <span style={{ marginLeft: 8, background: color + '22', color, borderRadius: 10, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>{flagList.length}</span>
         </div>
         {flagList.map(f => {
-          const m = members.find(x => String(x._id) === String(f.memberId));
-          if (!m) return null;
+          const m = members.find(x => String(x._id) === String(f.memberId)); if (!m) return null;
           return (
             <div key={String(f._id)} style={S.flagRow}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ ...S.avatar }}>{ini(m)}</div>
+                <div style={S.avatar}>{ini(m)}</div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
-                    <FlagPill reason={f.reason} />
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} />
                   </div>
                   <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{f.note || 'No note'} · {f.date}</div>
                 </div>
@@ -286,6 +256,125 @@ function Dashboard() {
     );
   }
 
+  // ── Drew Mode (Member Cleanup) ─────────────────────────────────────────────
+  function DrewMode() {
+    const unassigned = members.filter(m => !m.pkg || m.pkg === '');
+    const [idx, setIdx] = useState(0);
+    const [selectedPkg, setSelectedPkg] = useState('');
+    const [done, setDone] = useState(0);
+    const [skipped, setSkipped] = useState(0);
+
+    const current = unassigned[idx];
+    const total = unassigned.length;
+    const pct = total > 0 ? Math.round((idx / total) * 100) : 100;
+
+    async function assignPkg() {
+      if (!selectedPkg) return;
+      await updateMember(current, { pkg: selectedPkg, status: 'active' });
+      setDone(d => d + 1); setSelectedPkg(''); setIdx(i => i + 1);
+    }
+
+    async function markInactive() {
+      await updateMember(current, { status: 'inactive' });
+      setDone(d => d + 1); setIdx(i => i + 1);
+    }
+
+    function skip() { setSkipped(s => s + 1); setIdx(i => i + 1); }
+
+    if (total === 0 || idx >= total) return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
+        <div style={{ fontSize: 64 }}>🎉</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Drew!</div>
+        <div style={{ fontSize: 14, color: '#888' }}>{done} members processed · {skipped} skipped</div>
+        <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
+      </div>
+    );
+
+    return (
+      <div>
+        <div style={S.pageHeader}>
+          <div>
+            <div style={S.pageTitle}>Member Cleanup <span style={{ fontSize: 13, color: '#1B8DB3', fontWeight: 600 }}>— Drew Mode 🧹</span></div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped</div>
+          </div>
+          <button style={S.btn} onClick={() => nav('dashboard')}>Exit</button>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+        </div>
+
+        {/* Card */}
+        <div style={{ maxWidth: 520, margin: '0 auto' }}>
+          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E8ECF0', padding: '2rem', boxShadow: '0 8px 32px rgba(27,141,179,0.08)', marginBottom: 16 }}>
+            {/* Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
+                {ini(current)}
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a' }}>{fullName(current)}</div>
+                <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{current.email || 'No email'}</div>
+                <div style={{ fontSize: 13, color: '#888' }}>{current.phone || 'No phone'}</div>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div style={{ background: '#F8FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
+              {current.daysSinceLastAppt != null && (
+                <div style={{ fontSize: 13, color: current.daysSinceLastAppt > 180 ? '#A32D2D' : current.daysSinceLastAppt > 90 ? '#854F0B' : '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
+                  {current.daysSinceLastAppt === 0 ? '🟢 Visited today' : `📅 Last visit: ${current.daysSinceLastAppt} days ago`}
+                </div>
+              )}
+              {current.notes && <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div>}
+              {!current.notes && !current.daysSinceLastAppt && <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
+            </div>
+
+            {/* Assign package */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Package</label>
+              <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)} style={{ ...S.input, fontSize: 14, padding: '10px 12px' }}>
+                <option value="">Select a package…</option>
+                {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
+              </select>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={assignPkg} disabled={!selectedPkg} style={{
+                flex: 1, padding: '11px', borderRadius: 10, border: 'none',
+                background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0',
+                color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default',
+                boxShadow: selectedPkg ? '0 4px 12px rgba(27,141,179,0.25)' : 'none', transition: 'all 0.2s'
+              }}>
+                ✓ Assign as Member
+              </button>
+              <button onClick={markInactive} style={{
+                flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1',
+                background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer'
+              }}>
+                ✕ Mark Inactive
+              </button>
+            </div>
+          </div>
+
+          {/* Skip */}
+          <div style={{ textAlign: 'center' }}>
+            <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+              Skip for now →
+            </button>
+          </div>
+
+          {/* Remaining count */}
+          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>
+            {total - idx - 1} remaining after this
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Head>
@@ -294,17 +383,19 @@ function Dashboard() {
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
       </Head>
       <div style={S.app}>
+        {/* Sidebar */}
         <div style={S.sidebar}>
           <div style={S.logo}>
-            <div style={{ background: '#fff', borderRadius: 5, padding: '8px 12px', border: '2px solid rgba(255,255,255,0.25)' }}>
+            <div style={{ background: '#fff', borderRadius: 6, padding: '8px 12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
               <div style={S.logoName}>STRETCH N<br/>MOTION</div>
               <div style={S.logoSub}>MOBILITY STUDIO · MEMBERS</div>
             </div>
           </div>
+
           <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #e5e5e5', position: 'relative' }} ref={searchRef}>
             <div style={{ position: 'relative' }}>
               <i className="ti ti-search" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#999' }} />
-              <input value={search} onChange={e => handleSearch(e.target.value)} onFocus={() => search && setShowSearchDrop(searchResults.length > 0)} placeholder="Search all members…" style={{ ...S.input, paddingLeft: 28, fontSize: 12, background: '#f5f5f5', border: '0.5px solid #e0e0e0' }} />
+              <input value={search} onChange={e => handleSearch(e.target.value)} onFocus={() => search && setShowSearchDrop(searchResults.length > 0)} placeholder="Search members…" style={{ ...S.input, paddingLeft: 28, fontSize: 12, background: '#f5f5f5', border: '0.5px solid #e0e0e0' }} />
             </div>
             {showSearchDrop && (
               <div style={S.searchDrop}>
@@ -312,14 +403,15 @@ function Dashboard() {
                   <div key={String(m._id)} style={S.searchItem} onClick={() => { viewMember(m, 'members'); setShowSearchDrop(false); setSearch(''); }}>
                     <div style={{ ...S.avatar, width: 24, height: 24, fontSize: 9, flexShrink: 0 }}>{ini(m)}</div>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 500 }}>{fullName(m)} {memberFlags(m._id).length > 0 && <i className="ti ti-flag" style={{ fontSize: 10, color: '#E24B4A' }} />}</div>
-                      <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{m.pkg}</div>
+                      <div style={{ fontSize: 12, fontWeight: 500 }}>{fullName(m)}</div>
+                      <div style={{ fontSize: 10, color: '#888' }}>{m.pkg || 'No package'}</div>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
           <div style={{ flex: 1, overflowY: 'auto', paddingTop: 6 }}>
             {[
               { id: 'dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
@@ -328,12 +420,17 @@ function Dashboard() {
               { id: 'packages', icon: 'ti-package', label: 'Packages' },
             ].map(item => (
               <div key={item.id} style={{ ...S.navItem, ...(page === item.id || (page === 'detail' && detailBack === item.id) ? S.navItemActive : {}) }} onClick={() => nav(item.id)}>
-                <i className={`ti ${item.icon}`} style={{ fontSize: 15 }} />
-                <span>{item.label}</span>
+                <i className={`ti ${item.icon}`} style={{ fontSize: 15 }} /><span>{item.label}</span>
                 {item.badge > 0 && <span style={S.navBadge}>{item.badge}</span>}
               </div>
             ))}
-            <div style={S.navSection}>Actions</div>
+
+            <div style={S.navSection}>Tools</div>
+            <div style={{ ...S.navItem, ...(page === 'cleanup' ? S.navItemActive : {}), ...(unassignedCount > 0 ? { color: '#1B8DB3' } : {}) }} onClick={() => nav('cleanup')}>
+              <i className="ti ti-brush" style={{ fontSize: 15 }} />
+              <span>Member Cleanup</span>
+              {unassignedCount > 0 && <span style={{ ...S.navBadge, background: '#EBF6FB', color: '#1B8DB3' }}>{unassignedCount}</span>}
+            </div>
             <div style={{ ...S.navItem, ...(page === 'addmember' ? S.navItemActive : {}) }} onClick={() => nav('addmember')}>
               <i className="ti ti-user-plus" style={{ fontSize: 15 }} /><span>Add member</span>
             </div>
@@ -343,12 +440,14 @@ function Dashboard() {
             </div>
             {importMsg && <div style={{ fontSize: 11, color: '#1B8DB3', padding: '4px 18px 8px', lineHeight: 1.4 }}>{importMsg}</div>}
           </div>
+
           <div style={S.sidebarFooter}>
             <div style={{ fontSize: 10, color: '#aaa' }}>Logged in as</div>
-            <div style={{ fontSize: 12, fontWeight: 500, marginTop: 2 }}>Staff admin</div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2, color: '#555' }}>Staff admin</div>
           </div>
         </div>
 
+        {/* Main */}
         <div style={S.main}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888', fontSize: 14 }}>
@@ -360,30 +459,45 @@ function Dashboard() {
               {page === 'dashboard' && (
                 <div>
                   <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>Dashboard</div>
-                    <div style={{ fontSize: 11, color: '#aaa' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                    <div>
+                      <div style={S.pageTitle}>Dashboard</div>
+                      <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                    </div>
                   </div>
+
+                  {/* Metrics */}
                   <div style={S.metrics}>
                     {[
-                      { label: 'Active members', value: activeCount, sub: 'Current', color: null },
-                      { label: 'Open flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#E24B4A' : null },
-                      { label: 'Expiring soon', value: expiringCount, sub: 'Within 14 days', color: expiringCount > 0 ? '#EF9F27' : null },
-                      { label: 'Revenue / mo', value: `$${revenue.toLocaleString()}`, sub: 'Active members', color: null },
+                      { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
+                      { label: 'Open Flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#A32D2D' : '#0F6E56', icon: 'ti-flag', bg: openFlagCount > 0 ? 'linear-gradient(135deg, #FFF0F0, #FCEBEB)' : 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
+                      { label: 'Expiring Soon', value: expiringCount, sub: 'Within 14 days', color: expiringCount > 0 ? '#854F0B' : '#888', icon: 'ti-clock', bg: expiringCount > 0 ? 'linear-gradient(135deg, #FFFBEB, #FAEEDA)' : 'linear-gradient(135deg, #F8F8F8, #F0F0F0)' },
+                      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: 'Active members only', color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                     ].map((m, i) => (
-                      <div key={i} style={S.metric}>
-                        <div style={S.metricLabel}>{m.label}</div>
-                        <div style={{ ...S.metricValue, ...(m.color ? { color: m.color } : {}) }}>{m.value}</div>
-                        <div style={S.metricSub}>{m.sub}</div>
+                      <div key={i} style={{ background: m.bg, borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div style={{ fontSize: 11, color: m.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{m.label}</div>
+                          <i className={`ti ${m.icon}`} style={{ fontSize: 16, color: m.color, opacity: 0.6 }} />
+                        </div>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
+                        <div style={{ fontSize: 11, color: m.color, opacity: 0.7, marginTop: 4 }}>{m.sub}</div>
                       </div>
                     ))}
                   </div>
 
-                  <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
-                  <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-flag" />
-
-                  {openFlagCount === 0 && (
-                    <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>
+                  {/* Cleanup nudge */}
+                  {unassignedCount > 0 && (
+                    <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', border: '1px solid #B5D4E4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#1B8DB3' }}>🧹 {unassignedCount} members need review</div>
+                        <div style={{ fontSize: 12, color: '#5A9AB5', marginTop: 2 }}>Drew, time to earn your keep.</div>
+                      </div>
+                      <button onClick={() => nav('cleanup')} style={{ ...S.btnPrimary, fontSize: 13, padding: '8px 16px' }}>Start Cleanup →</button>
+                    </div>
                   )}
+
+                  <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
+                  <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
+                  {openFlagCount === 0 && <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>}
                 </div>
               )}
 
@@ -391,13 +505,9 @@ function Dashboard() {
               {page === 'members' && (
                 <div>
                   <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>
-                      Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({filteredMembers.length})</span>
-                    </div>
+                    <div style={S.pageTitle}>Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({filteredMembers.length})</span></div>
                     <button style={S.btnPrimary} onClick={() => nav('addmember')}><i className="ti ti-user-plus" />Add member</button>
                   </div>
-
-                  {/* Filter tabs */}
                   <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
                     {[
                       { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
@@ -406,19 +516,18 @@ function Dashboard() {
                       { key: 'all', label: `All (${members.length})` },
                     ].map(f => (
                       <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{
-                        padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
+                        padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s',
                         background: memberFilter === f.key ? '#1B8DB3' : '#fff',
                         color: memberFilter === f.key ? '#fff' : '#666',
                         border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd',
-                        fontWeight: memberFilter === f.key ? 600 : 400,
+                        boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none',
                       }}>{f.label}</button>
                     ))}
                   </div>
-
                   <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                     <table style={S.table}>
                       <thead>
-                        <tr style={{ background: '#fafafa' }}>
+                        <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
                           <th style={{ ...S.th, width: '25%' }}>Member</th>
                           <th style={{ ...S.th, width: '28%' }}>Package</th>
                           <th style={{ ...S.th, width: '10%' }}>Credits</th>
@@ -439,21 +548,15 @@ function Dashboard() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                                   <div style={{ ...S.avatar, ...(hasCardFlag ? { background: '#FCEBEB', color: '#A32D2D' } : {}) }}>{ini(m)}</div>
                                   <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName(m)}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName(m)}</div>
                                     <div style={{ fontSize: 10, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.email}</div>
                                   </div>
                                 </div>
                               </td>
-                              <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{m.pkg || '—'}</td>
+                              <td style={{ ...S.td, fontSize: 12, color: m.pkg ? '#555' : '#ccc' }}>{m.pkg || 'No package'}</td>
                               <td style={{ ...S.td, fontSize: 12 }}>{m.credits !== null && m.credits !== undefined ? m.credits : '—'}</td>
                               <td style={S.td}><StatusBadge status={m.status} /></td>
-                              <td style={S.td}>
-                                {mf.length > 0 ? (
-                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                    {mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
-                                  </div>
-                                ) : <span style={{ fontSize: 11, color: '#ccc' }}>—</span>}
-                              </td>
+                              <td style={S.td}>{mf.length > 0 ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}</div> : <span style={{ fontSize: 11, color: '#ccc' }}>—</span>}</td>
                               <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'members')}>View →</span></td>
                             </tr>
                           );
@@ -469,11 +572,13 @@ function Dashboard() {
                 <div>
                   <div style={S.pageHeader}>
                     <div style={S.pageTitle}>Flags</div>
-                    <button style={S.btn} onClick={() => { setFlagForm({ memberId: members[0]?._id || '', reason: 'card', note: '' }); setShowFlagModal(true); }}>
-                      <i className="ti ti-plus" />Add flag
-                    </button>
+                    <button style={S.btn} onClick={() => { setFlagForm({ memberId: members[0]?._id || '', reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-plus" />Add flag</button>
                   </div>
-
+                  <div style={S.tabs}>
+                    {['open', 'resolved'].map(t => (
+                      <div key={t} style={{ ...S.tab, ...(flagTab === t ? S.tabActive : {}) }} onClick={() => setFlagTab(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</div>
+                    ))}
+                  </div>
                   {flagTab === 'open' && (
                     <>
                       <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
@@ -481,34 +586,17 @@ function Dashboard() {
                       {openFlagCount === 0 && <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>}
                     </>
                   )}
-
-                  <div style={S.tabs}>
-                    {['open', 'resolved'].map(t => (
-                      <div key={t} style={{ ...S.tab, ...(flagTab === t ? S.tabActive : {}) }} onClick={() => setFlagTab(t)}>
-                        {t.charAt(0).toUpperCase() + t.slice(1)}
-                      </div>
-                    ))}
-                  </div>
-
                   {flagTab === 'resolved' && (
                     <div style={S.card}>
-                      {flags.filter(f => f.resolved).length === 0 ? (
-                        <div style={S.empty}>No resolved flags yet.</div>
-                      ) : flags.filter(f => f.resolved).map(f => {
-                        const m = members.find(x => String(x._id) === String(f.memberId));
-                        if (!m) return null;
+                      {flags.filter(f => f.resolved).length === 0 ? <div style={S.empty}>No resolved flags yet.</div> : flags.filter(f => f.resolved).map(f => {
+                        const m = members.find(x => String(x._id) === String(f.memberId)); if (!m) return null;
                         return (
                           <div key={String(f._id)} style={{ ...S.flagRow, opacity: 0.6 }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div style={S.avatar}>{ini(m)}</div>
                               <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span>
-                                  <FlagPill reason={f.reason} />
-                                  <span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span>
-                                </div>
-                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Flagged {f.date}</div>
-                                {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 12, color: '#666', marginTop: 5 }}>{f.note}</div>}
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} /><span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span></div>
+                                <div style={{ fontSize: 11, color: '#888' }}>Flagged {f.date}</div>
                               </div>
                             </div>
                           </div>
@@ -527,26 +615,27 @@ function Dashboard() {
                     <button style={S.btnPrimary} onClick={() => setShowPkgModal(true)}><i className="ti ti-plus" />New package</button>
                   </div>
                   {packages.map((p, i) => (
-                    <div key={i} style={S.card}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.type} · {p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ fontSize: 17, fontWeight: 500 }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
-                          <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
-                        </div>
+                    <div key={i} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#1B8DB3' }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
+                        <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
+              {/* Member Cleanup — Drew Mode */}
+              {page === 'cleanup' && <DrewMode />}
+
               {/* Add Member */}
               {page === 'addmember' && (
                 <div>
-                  <div style={S.pageHeader}><div style={S.pageTitle}>Add new member</div></div>
+                  <div style={S.pageHeader}><div style={S.pageTitle}>Add New Member</div></div>
                   <div style={{ ...S.card, maxWidth: 520 }}>
                     <div style={S.formRow}>
                       <div style={S.formGroup}><label style={S.label}>First name</label><input style={S.input} value={newMember.firstName} onChange={e => setNewMember(p => ({ ...p, firstName: e.target.value }))} placeholder="Sarah" /></div>
@@ -565,11 +654,11 @@ function Dashboard() {
                     </div>
                     <div style={S.formGroup}><label style={S.label}>Card on file (last 4)</label><input style={S.input} maxLength={4} value={newMember.card} onChange={e => setNewMember(p => ({ ...p, card: e.target.value }))} placeholder="4242" /></div>
                     <div style={S.formGroup}><label style={S.label}>Notes</label><textarea style={{ ...S.input, resize: 'vertical' }} rows={2} value={newMember.notes} onChange={e => setNewMember(p => ({ ...p, notes: e.target.value }))} placeholder="Health notes, goals, preferences…" /></div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
                       <button style={S.btnPrimary} onClick={addMember}><i className="ti ti-check" />Save member</button>
                       <button style={S.btn} onClick={() => nav('members')}>Cancel</button>
                     </div>
-                    {nmSuccess && <div style={{ ...S.banner, ...S.bannerInfo, marginTop: 12 }}><i className="ti ti-check" />Member added successfully!</div>}
+                    {nmSuccess && <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginTop: 12 }}>✓ Member added successfully!</div>}
                   </div>
                 </div>
               )}
@@ -583,38 +672,35 @@ function Dashboard() {
                 const pct = maxC && m.credits != null ? Math.round((m.credits / maxC) * 100) : null;
                 return (
                   <div>
-                    <div style={S.pageHeader}>
+                    <div style={{ marginBottom: 16 }}>
                       <button style={S.btnSm} onClick={() => nav(detailBack)}><i className="ti ti-arrow-left" />Back</button>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-                      <div style={{ ...S.avatar, width: 48, height: 48, fontSize: 16 }}>{ini(m)}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0' }}>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>{ini(m)}</div>
                       <div>
-                        <div style={{ fontSize: 20, fontWeight: 500 }}>{fullName(m)}</div>
-                        <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>{m.email} · {m.phone}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
-                          <StatusBadge status={m.status} />
-                          {mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
+                        <div style={{ fontSize: 22, fontWeight: 700 }}>{fullName(m)}</div>
+                        <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.email} · {m.phone}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                          <StatusBadge status={m.status} />{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                       <div style={S.card}>
                         <div style={S.cardTitle}>Membership</div>
-                        <div style={S.detailRow}><span style={{ color: '#888' }}>Package</span><span>{m.pkg || '—'}</span></div>
+                        <div style={S.detailRow}><span style={{ color: '#888' }}>Package</span><span style={{ fontWeight: 600 }}>{m.pkg || '—'}</span></div>
                         {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Sessions</span><span>{pkg.sessions} × 25 min/mo</span></div>}
-                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span>${pkg.price}{pkg.sessions > 1 ? '/mo' : ''}</span></div>}
+                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span style={{ fontWeight: 600, color: '#1B8DB3' }}>${pkg.price}{pkg.sessions > 1 ? '/mo' : ''}</span></div>}
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Next billing</span><span>{m.billing || '—'}</span></div>
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Card on file</span><span>···· {m.card || '????'}</span></div>
-                        {m.credits != null && (
-                          <>
-                            <div style={S.detailRow}><span style={{ color: '#888' }}>Credits left</span><span>{m.credits}</span></div>
-                            {pct !== null && <div style={{ height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden', marginTop: 6 }}><div style={{ height: '100%', width: `${pct}%`, background: '#1B8DB3', borderRadius: 3 }} /></div>}
-                          </>
-                        )}
+                        {m.credits != null && (<>
+                          <div style={S.detailRow}><span style={{ color: '#888' }}>Credits left</span><span>{m.credits}</span></div>
+                          {pct !== null && <div style={{ height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden', marginTop: 8 }}><div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3 }} /></div>}
+                        </>)}
                       </div>
                       <div style={S.card}>
-                        <div style={S.cardTitle}>Notes & flags</div>
-                        <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6, marginBottom: 12 }}>{m.notes || 'No notes on file.'}</div>
+                        <div style={S.cardTitle}>Notes & Flags</div>
+                        <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7, marginBottom: 12 }}>{m.notes || 'No notes on file.'}</div>
                         {mf.length > 0 ? mf.map(f => (
                           <div key={String(f._id)} style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -624,14 +710,12 @@ function Dashboard() {
                             {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: '#666', marginTop: 4 }}>{f.note}</div>}
                           </div>
                         )) : <div style={{ fontSize: 11, color: '#aaa' }}>No open flags.</div>}
-                        <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}>
-                          <i className="ti ti-flag" />Add flag
-                        </button>
+                        <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-flag" />Add flag</button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                      <button style={S.btnSm} onClick={() => updateMemberStatus(m, 'active')}><i className="ti ti-check" />Mark active</button>
-                      <button style={S.btnSm} onClick={() => updateMemberStatus(m, 'paused')}><i className="ti ti-pause" />Pause</button>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button style={S.btnSm} onClick={() => updateMember(m, { status: 'active' })}><i className="ti ti-check" />Mark active</button>
+                      <button style={S.btnSm} onClick={() => updateMember(m, { status: 'paused' })}><i className="ti ti-pause" />Pause</button>
                       <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => removeMember(m)}><i className="ti ti-trash" />Remove</button>
                     </div>
                   </div>
@@ -647,7 +731,7 @@ function Dashboard() {
         <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowFlagModal(false); }}>
           <div style={S.modal}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>Add flag</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Add Flag</div>
               <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowFlagModal(false)}><i className="ti ti-x" /></button>
             </div>
             <div style={S.formGroup}><label style={S.label}>Member</label>
@@ -680,7 +764,7 @@ function Dashboard() {
         <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowPkgModal(false); }}>
           <div style={S.modal}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>New package</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>New Package</div>
               <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowPkgModal(false)}><i className="ti ti-x" /></button>
             </div>
             <div style={S.formRow}>
@@ -708,49 +792,42 @@ function Dashboard() {
 }
 
 const styles = {
-  app: { display: 'flex', height: '100vh', background: '#f7f7f5', fontFamily: 'system-ui, sans-serif', color: '#1a1a1a' },
-  sidebar: { width: 210, minWidth: 210, background: '#fff', borderRight: '0.5px solid #e8e8e8', display: 'flex', flexDirection: 'column', height: '100vh' },
-  logo: { padding: '12px 14px', borderBottom: '0.5px solid #1570A0', background: '#1B8DB3' },
+  app: { display: 'flex', height: '100vh', background: '#F4F7FA', fontFamily: 'system-ui, sans-serif', color: '#1a1a1a' },
+  sidebar: { width: 216, minWidth: 216, background: '#fff', borderRight: '1px solid #E8ECF0', display: 'flex', flexDirection: 'column', height: '100vh', boxShadow: '2px 0 8px rgba(0,0,0,0.04)' },
+  logo: { padding: '14px', borderBottom: '1px solid #1570A0', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' },
   logoName: { fontSize: 15, fontWeight: 900, fontStyle: 'italic', color: '#1B8DB3', textTransform: 'uppercase', letterSpacing: '-0.5px', lineHeight: 1.1 },
   logoSub: { fontSize: 7, color: '#1B8DB3', marginTop: 3, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600 },
-  navItem: { display: 'flex', alignItems: 'center', gap: 9, padding: '8px 18px', fontSize: 13, cursor: 'pointer', color: '#666', borderLeft: '2px solid transparent', transition: 'all .12s' },
-  navItemActive: { background: '#EBF6FB', color: '#1B8DB3', borderLeftColor: '#1B8DB3', fontWeight: 500 },
-  navBadge: { marginLeft: 'auto', background: '#FCEBEB', color: '#A32D2D', borderRadius: 10, fontSize: 10, padding: '1px 6px', fontWeight: 500 },
+  navItem: { display: 'flex', alignItems: 'center', gap: 9, padding: '9px 18px', fontSize: 13, cursor: 'pointer', color: '#666', borderLeft: '3px solid transparent', transition: 'all .12s' },
+  navItemActive: { background: 'linear-gradient(90deg, #EBF6FB, #F4FAFD)', color: '#1B8DB3', borderLeftColor: '#1B8DB3', fontWeight: 600 },
+  navBadge: { marginLeft: 'auto', background: '#FCEBEB', color: '#A32D2D', borderRadius: 10, fontSize: 10, padding: '1px 6px', fontWeight: 600 },
   navSection: { fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: '#bbb', padding: '.75rem 18px .3rem', marginTop: '.25rem' },
-  sidebarFooter: { padding: '14px 18px', borderTop: '0.5px solid #e8e8e8' },
-  main: { flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' },
-  pageHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.125rem' },
-  pageTitle: { fontSize: 17, fontWeight: 600 },
-  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: '1.125rem' },
-  metric: { background: '#fff', border: '0.5px solid #efefef', borderRadius: 10, padding: '12px 14px' },
-  metricLabel: { fontSize: 11, color: '#888', marginBottom: 4 },
-  metricValue: { fontSize: 22, fontWeight: 600 },
-  metricSub: { fontSize: 10, color: '#bbb', marginTop: 3 },
-  card: { background: '#fff', border: '0.5px solid #efefef', borderRadius: 10, padding: '14px 16px', marginBottom: 12 },
-  cardTitle: { fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center' },
+  sidebarFooter: { padding: '14px 18px', borderTop: '1px solid #E8ECF0' },
+  main: { flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' },
+  pageHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' },
+  pageTitle: { fontSize: 20, fontWeight: 800, color: '#1a1a1a' },
+  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: '1.25rem' },
+  card: { background: '#fff', border: '1px solid #E8ECF0', borderRadius: 12, padding: '16px 18px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' },
+  cardTitle: { fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center' },
   flagRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid #f3f3f3' },
   table: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' },
-  th: { textAlign: 'left', fontWeight: 500, fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.05em', padding: '10px 10px', borderBottom: '0.5px solid #f0f0f0' },
-  td: { padding: '9px 10px', verticalAlign: 'middle' },
-  avatar: { width: 28, height: 28, borderRadius: '50%', background: '#D6EEF7', color: '#1B8DB3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 500, flexShrink: 0 },
-  input: { fontFamily: 'system-ui, sans-serif', fontSize: 13, color: '#1a1a1a', background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '7px 10px', width: '100%', outline: 'none', boxSizing: 'border-box' },
+  th: { textAlign: 'left', fontWeight: 700, fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: '.05em', padding: '10px 12px', borderBottom: '1px solid #E8ECF0' },
+  td: { padding: '10px 12px', verticalAlign: 'middle' },
+  avatar: { width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #D6EEF7, #B5D4E4)', color: '#1B8DB3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
+  input: { fontFamily: 'system-ui, sans-serif', fontSize: 13, color: '#1a1a1a', background: '#F8FAFB', border: '1px solid #E0E6EB', borderRadius: 8, padding: '8px 10px', width: '100%', outline: 'none', boxSizing: 'border-box' },
   formRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 },
   formGroup: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 },
-  label: { fontSize: 11, color: '#888' },
-  btn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 8, border: '0.5px solid #ddd', background: 'transparent', color: '#1a1a1a', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' },
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #1B8DB3', background: '#1B8DB3', color: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' },
-  btnSm: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 7, border: '0.5px solid #ddd', background: 'transparent', color: '#1a1a1a', fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' },
-  alink: { color: '#1B8DB3', cursor: 'pointer', fontSize: 12 },
-  tabs: { display: 'flex', gap: 2, marginBottom: 14, background: '#f3f3f3', padding: 3, borderRadius: 8, width: 'fit-content' },
-  tab: { padding: '5px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#888' },
-  tabActive: { background: '#fff', color: '#1a1a1a', fontWeight: 500 },
-  banner: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12 },
-  bannerDanger: { background: '#FCEBEB', border: '0.5px solid #F7C1C1', color: '#A32D2D' },
-  bannerInfo: { background: '#E6F1FB', border: '0.5px solid #B5D4F4', color: '#185FA5' },
-  empty: { fontSize: 12, color: '#aaa', padding: '12px 0' },
-  detailRow: { display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '0.5px solid #f5f5f5' },
-  searchDrop: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, zIndex: 200, maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.08)' },
-  searchItem: { padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '0.5px solid #f5f5f5' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-  modal: { background: '#fff', borderRadius: 12, border: '0.5px solid #e0e0e0', padding: '1.25rem', width: 440, maxHeight: '85vh', overflowY: 'auto' },
+  label: { fontSize: 11, color: '#888', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' },
+  btn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: '1px solid #E0E6EB', background: '#fff', color: '#555', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600 },
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 700, boxShadow: '0 2px 8px rgba(27,141,179,0.25)' },
+  btnSm: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid #E0E6EB', background: '#fff', color: '#555', fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' },
+  alink: { color: '#1B8DB3', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
+  tabs: { display: 'flex', gap: 2, marginBottom: 16, background: '#F0F4F7', padding: 3, borderRadius: 8, width: 'fit-content' },
+  tab: { padding: '6px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#888', fontWeight: 500 },
+  tabActive: { background: '#fff', color: '#1B8DB3', fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
+  empty: { fontSize: 13, color: '#bbb', padding: '16px 0', textAlign: 'center' },
+  detailRow: { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '7px 0', borderBottom: '0.5px solid #F0F0F0' },
+  searchDrop: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 10, zIndex: 200, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' },
+  searchItem: { padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '0.5px solid #F5F5F5' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' },
+  modal: { background: '#fff', borderRadius: 14, padding: '1.5rem', width: 460, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' },
 };
