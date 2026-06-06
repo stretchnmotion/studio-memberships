@@ -696,69 +696,6 @@ function Dashboard() {
           )}
         </div>
       </div>
-                  <div>
-                    <div style={{ marginBottom: 16 }}>
-                      <button style={S.btnSm} onClick={() => nav(detailBack)}><i className="ti ti-arrow-left" />Back</button>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0' }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>{ini(m)}</div>
-                      <div>
-                        <div style={{ fontSize: 22, fontWeight: 700 }}>{fullName(m)}</div>
-                        <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.email} · {m.phone}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                          <StatusBadge status={m.status} />{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                      <div style={S.card}>
-                        <div style={S.cardTitle}>Membership</div>
-
-                        {/* Editable package */}
-                        <div style={{ ...S.detailRow, alignItems: 'center' }}>
-                          <span style={{ color: '#888' }}>Package</span>
-                          {editingPkg ? (
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                              <select value={newPkg} onChange={e => setNewPkg(e.target.value)} style={{ ...S.input, fontSize: 12, padding: '4px 8px', width: 'auto' }}>
-                                <option value="">No package</option>
-                                {packages.map((p, i) => <option key={i} value={p.name}>{p.name}</option>)}
-                              </select>
-                              <button onClick={savePkg} style={{ ...S.btnSm, background: '#1B8DB3', color: '#fff', border: 'none' }}>Save</button>
-                              <button onClick={() => setEditingPkg(false)} style={S.btnSm}>✕</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <span style={{ fontWeight: 600 }}>{m.pkg || '—'}</span>
-                              <button onClick={() => setEditingPkg(true)} style={{ ...S.btnSm, fontSize: 10, padding: '2px 7px', color: '#1B8DB3', borderColor: '#B5D4E4' }}>Change</button>
-                            </div>
-                          )}
-                        </div>
-
-                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Sessions</span><span>{pkg.sessions} × 25 min/mo</span></div>}
-                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span style={{ fontWeight: 600, color: '#1B8DB3' }}>${pkg.price}/mo</span></div>}
-                        <div style={S.detailRow}><span style={{ color: '#888' }}>Next billing</span><span>{m.billing || '—'}</span></div>
-                        <div style={S.detailRow}><span style={{ color: '#888' }}>Card on file</span><span>···· {m.card || '????'}</span></div>
-                        {m.daysSinceLastAppt != null && <div style={S.detailRow}><span style={{ color: '#888' }}>Last visit</span><span style={{ color: m.daysSinceLastAppt > 90 ? '#A32D2D' : '#444' }}>{m.daysSinceLastAppt}d ago</span></div>}
-                      </div>
-
-                      <div style={S.card}>
-                        <div style={S.cardTitle}>Notes & Flags</div>
-                        <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7, marginBottom: 12 }}>{m.notes || 'No notes on file.'}</div>
-                        {mf.length > 0 ? mf.map(f => (
-                          <div key={String(f._id)} style={{ marginBottom: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <FlagPill reason={f.reason} />
-                              <span style={{ ...S.alink, color: '#1D9E75', fontSize: 11 }} onClick={() => resolveFlag(f)}>Resolve</span>
-                            </div>
-                            {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: '#666', marginTop: 4 }}>{f.note}</div>}
-                          </div>
-                        )) : <div style={{ fontSize: 11, color: '#aaa' }}>No open flags.</div>}
-                        <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-flag" />Add flag</button>
-                      </div>
-                    </div>
-
-
 
       {/* Flag Modal */}
       {showFlagModal && (
