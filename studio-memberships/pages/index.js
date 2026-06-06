@@ -73,11 +73,11 @@ export default function Home() {
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 11, color: '#999', display: 'block', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Password</label>
-            <input type="password" style={{ fontFamily: 'system-ui, sans-serif', fontSize: 14, color: '#1a1a1a', background: '#F8FAFB', border: '1.5px solid #E8ECF0', borderRadius: 10, padding: '10px 12px', width: '100%', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
+            <input type="password" style={{ fontFamily: 'system-ui, sans-serif', fontSize: 14, color: '#1a1a1a', background: '#F8FAFB', border: '1.5px solid #E8ECF0', borderRadius: 10, padding: '10px 12px', width: '100%', outline: 'none', boxSizing: 'border-box' }}
               value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="Enter staff password" autoFocus />
           </div>
           {pwError && <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 12, background: '#FFF0F0', padding: '8px 12px', borderRadius: 8 }}>{pwError}</div>}
-          <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(27,141,179,0.3)', letterSpacing: '0.3px' }}>
+          <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(27,141,179,0.3)' }}>
             {pwLoading ? 'Checking…' : 'Log in →'}
           </button>
         </div>
@@ -100,6 +100,7 @@ function Dashboard() {
   const [detailBack, setDetailBack] = useState('members');
   const [flagTab, setFlagTab] = useState('open');
   const [memberFilter, setMemberFilter] = useState('active');
+  const [pkgFilter, setPkgFilter] = useState('all');
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [flagForm, setFlagForm] = useState({ memberId: '', reason: 'card', note: '' });
@@ -144,7 +145,7 @@ function Dashboard() {
     setSearch(val);
     if (!val.trim()) { setShowSearchDrop(false); return; }
     const q = val.toLowerCase();
-    const res = members.filter(m => (fullName(m) + m.email + (m.pkg||'') + (m.phone||'')).toLowerCase().includes(q)).slice(0, 6);
+    const res = members.filter(m => (fullName(m) + (m.email||'') + (m.pkg||'') + (m.phone||'')).toLowerCase().includes(q)).slice(0, 6);
     setSearchResults(res); setShowSearchDrop(res.length > 0);
   }
 
@@ -206,20 +207,26 @@ function Dashboard() {
     });
   }
 
-  const activeCount = members.filter(m => m.status === 'active').length;
+  const activeMembers = members.filter(m => m.status === 'active');
+  const activeCount = activeMembers.length;
   const openFlagCount = openFlags().length;
   const expiringCount = members.filter(m => m.status === 'expiring').length;
   const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
-  const revenue = members.filter(m => m.status === 'active').reduce((a, m) => {
+  const revenue = activeMembers.reduce((a, m) => {
     const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
   }, 0);
 
+  // Package tier breakdown
+  const tierBreakdown = packages.map(p => ({
+    ...p,
+    count: activeMembers.filter(m => m.name === p.name || m.pkg === p.name).length,
+  }));
+
+  // Filtered members for the members page
   const filteredMembers = members.filter(m => {
-    if (memberFilter === 'all') return true;
-    if (memberFilter === 'active') return m.status === 'active';
-    if (memberFilter === 'paused') return m.status === 'paused';
-    if (memberFilter === 'expiring') return m.status === 'expiring';
-    return true;
+    const statusMatch = memberFilter === 'all' ? true : m.status === memberFilter;
+    const pkgMatch = pkgFilter === 'all' ? true : pkgFilter === 'none' ? (!m.pkg || m.pkg === '') : m.pkg === pkgFilter;
+    return statusMatch && pkgMatch;
   });
 
   const S = styles;
@@ -256,7 +263,6 @@ function Dashboard() {
     );
   }
 
-  // ── Drew Mode (Member Cleanup) ─────────────────────────────────────────────
   function DrewMode() {
     const unassigned = members.filter(m => !m.pkg || m.pkg === '');
     const [idx, setIdx] = useState(0);
@@ -285,7 +291,7 @@ function Dashboard() {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
         <div style={{ fontSize: 64 }}>🎉</div>
         <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Drew!</div>
-        <div style={{ fontSize: 14, color: '#888' }}>{done} members processed · {skipped} skipped</div>
+        <div style={{ fontSize: 14, color: '#888' }}>{done} processed · {skipped} skipped</div>
         <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
       </div>
     );
@@ -299,39 +305,27 @@ function Dashboard() {
           </div>
           <button style={S.btn} onClick={() => nav('dashboard')}>Exit</button>
         </div>
-
-        {/* Progress bar */}
         <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
         </div>
-
-        {/* Card */}
         <div style={{ maxWidth: 520, margin: '0 auto' }}>
           <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E8ECF0', padding: '2rem', boxShadow: '0 8px 32px rgba(27,141,179,0.08)', marginBottom: 16 }}>
-            {/* Avatar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
-                {ini(current)}
-              </div>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{ini(current)}</div>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a' }}>{fullName(current)}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{fullName(current)}</div>
                 <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{current.email || 'No email'}</div>
                 <div style={{ fontSize: 13, color: '#888' }}>{current.phone || 'No phone'}</div>
               </div>
             </div>
-
-            {/* Info */}
             <div style={{ background: '#F8FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
               {current.daysSinceLastAppt != null && (
                 <div style={{ fontSize: 13, color: current.daysSinceLastAppt > 180 ? '#A32D2D' : current.daysSinceLastAppt > 90 ? '#854F0B' : '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
                   {current.daysSinceLastAppt === 0 ? '🟢 Visited today' : `📅 Last visit: ${current.daysSinceLastAppt} days ago`}
                 </div>
               )}
-              {current.notes && <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div>}
-              {!current.notes && !current.daysSinceLastAppt && <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
+              {current.notes ? <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div> : <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
             </div>
-
-            {/* Assign package */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Package</label>
               <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)} style={{ ...S.input, fontSize: 14, padding: '10px 12px' }}>
@@ -339,37 +333,19 @@ function Dashboard() {
                 {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
               </select>
             </div>
-
-            {/* Action buttons */}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={assignPkg} disabled={!selectedPkg} style={{
-                flex: 1, padding: '11px', borderRadius: 10, border: 'none',
-                background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0',
-                color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default',
-                boxShadow: selectedPkg ? '0 4px 12px rgba(27,141,179,0.25)' : 'none', transition: 'all 0.2s'
-              }}>
+              <button onClick={assignPkg} disabled={!selectedPkg} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0', color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default', transition: 'all 0.2s' }}>
                 ✓ Assign as Member
               </button>
-              <button onClick={markInactive} style={{
-                flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1',
-                background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer'
-              }}>
+              <button onClick={markInactive} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                 ✕ Mark Inactive
               </button>
             </div>
           </div>
-
-          {/* Skip */}
           <div style={{ textAlign: 'center' }}>
-            <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
-              Skip for now →
-            </button>
+            <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>Skip for now →</button>
           </div>
-
-          {/* Remaining count */}
-          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>
-            {total - idx - 1} remaining after this
-          </div>
+          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>{total - idx - 1} remaining after this</div>
         </div>
       </div>
     );
@@ -391,7 +367,6 @@ function Dashboard() {
               <div style={S.logoSub}>MOBILITY STUDIO · MEMBERS</div>
             </div>
           </div>
-
           <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #e5e5e5', position: 'relative' }} ref={searchRef}>
             <div style={{ position: 'relative' }}>
               <i className="ti ti-search" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#999' }} />
@@ -411,7 +386,6 @@ function Dashboard() {
               </div>
             )}
           </div>
-
           <div style={{ flex: 1, overflowY: 'auto', paddingTop: 6 }}>
             {[
               { id: 'dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
@@ -424,11 +398,9 @@ function Dashboard() {
                 {item.badge > 0 && <span style={S.navBadge}>{item.badge}</span>}
               </div>
             ))}
-
             <div style={S.navSection}>Tools</div>
             <div style={{ ...S.navItem, ...(page === 'cleanup' ? S.navItemActive : {}), ...(unassignedCount > 0 ? { color: '#1B8DB3' } : {}) }} onClick={() => nav('cleanup')}>
-              <i className="ti ti-brush" style={{ fontSize: 15 }} />
-              <span>Member Cleanup</span>
+              <i className="ti ti-brush" style={{ fontSize: 15 }} /><span>Member Cleanup</span>
               {unassignedCount > 0 && <span style={{ ...S.navBadge, background: '#EBF6FB', color: '#1B8DB3' }}>{unassignedCount}</span>}
             </div>
             <div style={{ ...S.navItem, ...(page === 'addmember' ? S.navItemActive : {}) }} onClick={() => nav('addmember')}>
@@ -440,7 +412,6 @@ function Dashboard() {
             </div>
             {importMsg && <div style={{ fontSize: 11, color: '#1B8DB3', padding: '4px 18px 8px', lineHeight: 1.4 }}>{importMsg}</div>}
           </div>
-
           <div style={S.sidebarFooter}>
             <div style={{ fontSize: 10, color: '#aaa' }}>Logged in as</div>
             <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2, color: '#555' }}>Staff admin</div>
@@ -465,7 +436,7 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Metrics */}
+                  {/* Top metrics */}
                   <div style={S.metrics}>
                     {[
                       { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
@@ -484,7 +455,34 @@ function Dashboard() {
                     ))}
                   </div>
 
-                  {/* Cleanup nudge */}
+                  {/* Membership tier breakdown */}
+                  <div style={{ ...S.card, marginBottom: 16 }}>
+                    <div style={S.cardTitle}>
+                      <i className="ti ti-chart-bar" style={{ fontSize: 13, marginRight: 6, color: '#1B8DB3' }} />
+                      Membership Tiers
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {packages.filter(p => p.sessions > 1).map((p, i) => {
+                        const count = activeMembers.filter(m => m.pkg === p.name).length;
+                        const maxCount = Math.max(...packages.filter(pk => pk.sessions > 1).map(pk => activeMembers.filter(m => m.pkg === pk.name).length), 1);
+                        const barPct = Math.round((count / maxCount) * 100);
+                        const tierRevenue = count * p.price;
+                        return (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 160, fontSize: 12, fontWeight: 600, color: '#444', flexShrink: 0 }}>{p.name}</div>
+                            <div style={{ flex: 1, height: 8, background: '#F0F4F7', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${barPct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 4, transition: 'width 0.6s ease' }} />
+                            </div>
+                            <div style={{ width: 32, fontSize: 13, fontWeight: 800, color: '#1B8DB3', textAlign: 'right', flexShrink: 0 }}>{count}</div>
+                            <div style={{ width: 72, fontSize: 11, color: '#888', textAlign: 'right', flexShrink: 0 }}>${tierRevenue.toLocaleString()}/mo</div>
+                            <button onClick={() => { setMemberFilter('active'); setPkgFilter(p.name); nav('members'); }} style={{ fontSize: 10, color: '#1B8DB3', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>view</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Drew nudge */}
                   {unassignedCount > 0 && (
                     <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', border: '1px solid #B5D4E4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
@@ -508,31 +506,37 @@ function Dashboard() {
                     <div style={S.pageTitle}>Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({filteredMembers.length})</span></div>
                     <button style={S.btnPrimary} onClick={() => nav('addmember')}><i className="ti ti-user-plus" />Add member</button>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+
+                  {/* Status filter */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
                     {[
                       { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
                       { key: 'paused', label: `Paused (${members.filter(m => m.status === 'paused').length})` },
                       { key: 'expiring', label: `Expiring (${members.filter(m => m.status === 'expiring').length})` },
                       { key: 'all', label: `All (${members.length})` },
                     ].map(f => (
-                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{
-                        padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s',
-                        background: memberFilter === f.key ? '#1B8DB3' : '#fff',
-                        color: memberFilter === f.key ? '#fff' : '#666',
-                        border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd',
-                        boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none',
-                      }}>{f.label}</button>
+                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s', background: memberFilter === f.key ? '#1B8DB3' : '#fff', color: memberFilter === f.key ? '#fff' : '#666', border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd', boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none' }}>{f.label}</button>
                     ))}
                   </div>
+
+                  {/* Package tier filter */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <button onClick={() => setPkgFilter('all')} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === 'all' ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === 'all' ? '#fff' : '#666', border: 'none' }}>All tiers</button>
+                    {packages.filter(p => p.sessions > 1).map((p, i) => (
+                      <button key={i} onClick={() => setPkgFilter(p.name)} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === p.name ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === p.name ? '#fff' : '#666', border: 'none' }}>{p.name}</button>
+                    ))}
+                    <button onClick={() => setPkgFilter('none')} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === 'none' ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === 'none' ? '#fff' : '#666', border: 'none' }}>No package</button>
+                  </div>
+
                   <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                     <table style={S.table}>
                       <thead>
                         <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
-                          <th style={{ ...S.th, width: '25%' }}>Member</th>
-                          <th style={{ ...S.th, width: '28%' }}>Package</th>
-                          <th style={{ ...S.th, width: '10%' }}>Credits</th>
+                          <th style={{ ...S.th, width: '22%' }}>Member</th>
+                          <th style={{ ...S.th, width: '26%' }}>Package</th>
                           <th style={{ ...S.th, width: '12%' }}>Status</th>
-                          <th style={{ ...S.th, width: '13%' }}>Flags</th>
+                          <th style={{ ...S.th, width: '12%' }}>Flags</th>
+                          <th style={{ ...S.th, width: '16%' }}>Last Visit</th>
                           <th style={{ ...S.th, width: '12%' }}></th>
                         </tr>
                       </thead>
@@ -553,10 +557,16 @@ function Dashboard() {
                                   </div>
                                 </div>
                               </td>
-                              <td style={{ ...S.td, fontSize: 12, color: m.pkg ? '#555' : '#ccc' }}>{m.pkg || 'No package'}</td>
-                              <td style={{ ...S.td, fontSize: 12 }}>{m.credits !== null && m.credits !== undefined ? m.credits : '—'}</td>
+                              <td style={{ ...S.td, fontSize: 12 }}>
+                                {m.pkg ? (
+                                  <span style={{ background: '#EBF6FB', color: '#1B8DB3', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{m.pkg}</span>
+                                ) : <span style={{ color: '#ccc', fontSize: 11 }}>No package</span>}
+                              </td>
                               <td style={S.td}><StatusBadge status={m.status} /></td>
-                              <td style={S.td}>{mf.length > 0 ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}</div> : <span style={{ fontSize: 11, color: '#ccc' }}>—</span>}</td>
+                              <td style={S.td}>{mf.length > 0 ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}</div> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
+                              <td style={{ ...S.td, fontSize: 11, color: m.daysSinceLastAppt > 90 ? '#A32D2D' : '#666' }}>
+                                {m.daysSinceLastAppt != null ? `${m.daysSinceLastAppt}d ago` : '—'}
+                              </td>
                               <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'members')}>View →</span></td>
                             </tr>
                           );
@@ -614,22 +624,26 @@ function Dashboard() {
                     <div style={S.pageTitle}>Packages</div>
                     <button style={S.btnPrimary} onClick={() => setShowPkgModal(true)}><i className="ti ti-plus" />New package</button>
                   </div>
-                  {packages.map((p, i) => (
-                    <div key={i} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
+                  {packages.map((p, i) => {
+                    const count = activeMembers.filter(m => m.pkg === p.name).length;
+                    return (
+                      <div key={i} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+                          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
+                          {count > 0 && <div style={{ fontSize: 11, color: '#1B8DB3', marginTop: 4, fontWeight: 600 }}>{count} active member{count !== 1 ? 's' : ''}</div>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: '#1B8DB3' }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
+                          <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: '#1B8DB3' }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
-                        <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Member Cleanup — Drew Mode */}
+              {/* Member Cleanup */}
               {page === 'cleanup' && <DrewMode />}
 
               {/* Add Member */}
@@ -668,8 +682,14 @@ function Dashboard() {
                 const m = members.find(x => String(x._id) === String(detailMember._id)) || detailMember;
                 const mf = memberFlags(m._id);
                 const pkg = packages.find(p => p.name === m.pkg);
-                const maxC = pkg ? pkg.sessions : null;
-                const pct = maxC && m.credits != null ? Math.round((m.credits / maxC) * 100) : null;
+                const [editingPkg, setEditingPkg] = useState(false);
+                const [newPkg, setNewPkg] = useState(m.pkg || '');
+
+                async function savePkg() {
+                  await updateMember(m, { pkg: newPkg, status: newPkg ? 'active' : m.status });
+                  setEditingPkg(false);
+                }
+
                 return (
                   <div>
                     <div style={{ marginBottom: 16 }}>
@@ -685,19 +705,38 @@ function Dashboard() {
                         </div>
                       </div>
                     </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                       <div style={S.card}>
                         <div style={S.cardTitle}>Membership</div>
-                        <div style={S.detailRow}><span style={{ color: '#888' }}>Package</span><span style={{ fontWeight: 600 }}>{m.pkg || '—'}</span></div>
+
+                        {/* Editable package */}
+                        <div style={{ ...S.detailRow, alignItems: 'center' }}>
+                          <span style={{ color: '#888' }}>Package</span>
+                          {editingPkg ? (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <select value={newPkg} onChange={e => setNewPkg(e.target.value)} style={{ ...S.input, fontSize: 12, padding: '4px 8px', width: 'auto' }}>
+                                <option value="">No package</option>
+                                {packages.map((p, i) => <option key={i} value={p.name}>{p.name}</option>)}
+                              </select>
+                              <button onClick={savePkg} style={{ ...S.btnSm, background: '#1B8DB3', color: '#fff', border: 'none' }}>Save</button>
+                              <button onClick={() => setEditingPkg(false)} style={S.btnSm}>✕</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <span style={{ fontWeight: 600 }}>{m.pkg || '—'}</span>
+                              <button onClick={() => setEditingPkg(true)} style={{ ...S.btnSm, fontSize: 10, padding: '2px 7px', color: '#1B8DB3', borderColor: '#B5D4E4' }}>Change</button>
+                            </div>
+                          )}
+                        </div>
+
                         {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Sessions</span><span>{pkg.sessions} × 25 min/mo</span></div>}
-                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span style={{ fontWeight: 600, color: '#1B8DB3' }}>${pkg.price}{pkg.sessions > 1 ? '/mo' : ''}</span></div>}
+                        {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span style={{ fontWeight: 600, color: '#1B8DB3' }}>${pkg.price}/mo</span></div>}
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Next billing</span><span>{m.billing || '—'}</span></div>
                         <div style={S.detailRow}><span style={{ color: '#888' }}>Card on file</span><span>···· {m.card || '????'}</span></div>
-                        {m.credits != null && (<>
-                          <div style={S.detailRow}><span style={{ color: '#888' }}>Credits left</span><span>{m.credits}</span></div>
-                          {pct !== null && <div style={{ height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden', marginTop: 8 }}><div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3 }} /></div>}
-                        </>)}
+                        {m.daysSinceLastAppt != null && <div style={S.detailRow}><span style={{ color: '#888' }}>Last visit</span><span style={{ color: m.daysSinceLastAppt > 90 ? '#A32D2D' : '#444' }}>{m.daysSinceLastAppt}d ago</span></div>}
                       </div>
+
                       <div style={S.card}>
                         <div style={S.cardTitle}>Notes & Flags</div>
                         <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7, marginBottom: 12 }}>{m.notes || 'No notes on file.'}</div>
@@ -713,6 +752,7 @@ function Dashboard() {
                         <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-flag" />Add flag</button>
                       </div>
                     </div>
+
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button style={S.btnSm} onClick={() => updateMember(m, { status: 'active' })}><i className="ti ti-check" />Mark active</button>
                       <button style={S.btnSm} onClick={() => updateMember(m, { status: 'paused' })}><i className="ti ti-pause" />Pause</button>
@@ -825,7 +865,7 @@ const styles = {
   tab: { padding: '6px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#888', fontWeight: 500 },
   tabActive: { background: '#fff', color: '#1B8DB3', fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
   empty: { fontSize: 13, color: '#bbb', padding: '16px 0', textAlign: 'center' },
-  detailRow: { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '7px 0', borderBottom: '0.5px solid #F0F0F0' },
+  detailRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '7px 0', borderBottom: '0.5px solid #F0F0F0' },
   searchDrop: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 10, zIndex: 200, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' },
   searchItem: { padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '0.5px solid #F5F5F5' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' },
