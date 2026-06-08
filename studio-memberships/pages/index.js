@@ -283,8 +283,10 @@ function Dashboard() {
         await updateMember(current, { pkg: selectedPkg, status: 'active' });
         setDone(d => d + 1); setSelectedPkg(''); setIdx(i => i + 1);
       }
-      async function markInactive() {
-        await updateMember(current, { status: 'inactive' });
+      async function deleteRecord() {
+        if (!confirm(`Delete ${fullName(current)} from studio-memberships? This cannot be undone.`)) return;
+        await fetch(`/api/members?id=${current._id}`, { method: 'DELETE' });
+        setMembers(prev => prev.filter(x => String(x._id) !== String(current._id)));
         setDone(d => d + 1); setIdx(i => i + 1);
       }
       function skip() { setSkipped(s => s + 1); setIdx(i => i + 1); }
@@ -333,8 +335,8 @@ function Dashboard() {
                 <button onClick={assignPkg} disabled={!selectedPkg} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0', color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default', transition: 'all 0.2s' }}>
                   ✓ Assign as Member
                 </button>
-                <button onClick={markInactive} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                  ✕ Mark Inactive
+                <button onClick={deleteRecord} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  🗑 Delete Record
                 </button>
               </div>
             </div>
