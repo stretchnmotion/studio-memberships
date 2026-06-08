@@ -264,89 +264,329 @@ function Dashboard() {
   }
 
   function DrewMode() {
-    const unassigned = members.filter(m => !m.pkg || m.pkg === '');
-    const [idx, setIdx] = useState(0);
-    const [selectedPkg, setSelectedPkg] = useState('');
-    const [done, setDone] = useState(0);
-    const [skipped, setSkipped] = useState(0);
+    const [tab, setTab] = useState('assign');
 
-    const current = unassigned[idx];
-    const total = unassigned.length;
-    const pct = total > 0 ? Math.round((idx / total) * 100) : 100;
+    // ── Tab 1: Package Assignment ─────────────────────────────────────────
+    function AssignTab() {
+      const unassigned = members.filter(m => !m.pkg || m.pkg === '');
+      const [idx, setIdx] = useState(0);
+      const [selectedPkg, setSelectedPkg] = useState('');
+      const [done, setDone] = useState(0);
+      const [skipped, setSkipped] = useState(0);
 
-    async function assignPkg() {
-      if (!selectedPkg) return;
-      await updateMember(current, { pkg: selectedPkg, status: 'active' });
-      setDone(d => d + 1); setSelectedPkg(''); setIdx(i => i + 1);
+      const current = unassigned[idx];
+      const total = unassigned.length;
+      const pct = total > 0 ? Math.round((idx / total) * 100) : 100;
+
+      async function assignPkg() {
+        if (!selectedPkg) return;
+        await updateMember(current, { pkg: selectedPkg, status: 'active' });
+        setDone(d => d + 1); setSelectedPkg(''); setIdx(i => i + 1);
+      }
+      async function markInactive() {
+        await updateMember(current, { status: 'inactive' });
+        setDone(d => d + 1); setIdx(i => i + 1);
+      }
+      function skip() { setSkipped(s => s + 1); setIdx(i => i + 1); }
+
+      if (total === 0 || idx >= total) return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 16 }}>
+          <div style={{ fontSize: 64 }}>🎉</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Admin Master!</div>
+          <div style={{ fontSize: 14, color: '#888' }}>{done} processed · {skipped} skipped</div>
+          <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
+        </div>
+      );
+
+      return (
+        <div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped</div>
+          <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+          </div>
+          <div style={{ maxWidth: 520, margin: '0 auto' }}>
+            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E8ECF0', padding: '2rem', boxShadow: '0 8px 32px rgba(27,141,179,0.08)', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{ini(current)}</div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{fullName(current)}</div>
+                  <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{current.email || 'No email'}</div>
+                  <div style={{ fontSize: 13, color: '#888' }}>{current.phone || 'No phone'}</div>
+                </div>
+              </div>
+              <div style={{ background: '#F8FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
+                {current.daysSinceLastAppt != null ? (
+                  <div style={{ fontSize: 13, color: current.daysSinceLastAppt > 180 ? '#A32D2D' : current.daysSinceLastAppt > 90 ? '#854F0B' : '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
+                    {current.daysSinceLastAppt === 0 ? '🟢 Visited today' : `📅 Last visit: ${current.daysSinceLastAppt} days ago`}
+                  </div>
+                ) : null}
+                {current.notes ? <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div> : <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Package</label>
+                <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)} style={{ ...S.input, fontSize: 14, padding: '10px 12px' }}>
+                  <option value="">Select a package…</option>
+                  {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={assignPkg} disabled={!selectedPkg} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0', color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default', transition: 'all 0.2s' }}>
+                  ✓ Assign as Member
+                </button>
+                <button onClick={markInactive} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  ✕ Mark Inactive
+                </button>
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>Skip for now →</button>
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>{total - idx - 1} remaining after this</div>
+          </div>
+        </div>
+      );
     }
 
-    async function markInactive() {
-      await updateMember(current, { status: 'inactive' });
-      setDone(d => d + 1); setIdx(i => i + 1);
+    // ── Tab 2: Clean Records ──────────────────────────────────────────────
+    function CleanRecordsTab() {
+      const [loading, setLoading] = useState(false);
+      const [data, setData] = useState(null);
+      const [selected, setSelected] = useState(new Set());
+      const [deleting, setDeleting] = useState(false);
+      const [done, setDone] = useState(false);
+      const [filterOrphans, setFilterOrphans] = useState(true);
+
+      async function runCheck() {
+        setLoading(true);
+        setSelected(new Set());
+        try {
+          const res = await fetch('/api/cleanup/orphans');
+          const json = await res.json();
+          setData(json);
+        } catch (err) {
+          alert('Failed to fetch data: ' + err.message);
+        }
+        setLoading(false);
+      }
+
+      function toggleSelect(id) {
+        setSelected(prev => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+      }
+
+      function selectAll() {
+        const visible = displayList.map(r => r._id);
+        setSelected(new Set(visible));
+      }
+
+      function clearAll() { setSelected(new Set()); }
+
+      async function deleteSelected() {
+        if (selected.size === 0) return;
+        if (!confirm(`Permanently delete ${selected.size} records from studio-memberships? This cannot be undone. Acuity is NOT affected.`)) return;
+        setDeleting(true);
+        try {
+          const res = await fetch('/api/cleanup/orphans', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: Array.from(selected) }),
+          });
+          const result = await res.json();
+          setDone(true);
+          fetchAll();
+          alert(`✓ Deleted ${result.deleted} records from studio-memberships. Acuity unchanged.`);
+          setData(null);
+          setSelected(new Set());
+          setDone(false);
+        } catch (err) {
+          alert('Delete failed: ' + err.message);
+        }
+        setDeleting(false);
+      }
+
+      const displayList = data ? (filterOrphans ? data.results.filter(r => r.isOrphan) : data.results) : [];
+
+      function scoreColor(score) {
+        if (score >= 100) return '#0F6E56';
+        if (score >= 60) return '#854F0B';
+        return '#A32D2D';
+      }
+
+      function scoreLabel(score) {
+        if (score >= 100) return 'Strong match';
+        if (score >= 60) return 'Weak match';
+        return 'No match in Acuity';
+      }
+
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Clean Records</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                Find studio-memberships records with no match in Acuity. Delete safely — Acuity is never touched.
+              </div>
+            </div>
+            <button onClick={runCheck} disabled={loading} style={{ ...S.btnPrimary, fontSize: 13 }}>
+              {loading ? '⏳ Comparing…' : data ? '🔄 Re-run Check' : '🔍 Run Check'}
+            </button>
+          </div>
+
+          {/* Stats */}
+          {data && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              {[
+                { label: 'Studio-Memberships', value: data.total, color: '#1B8DB3', bg: '#EBF6FB' },
+                { label: 'Acuity Clients', value: data.acuityTotal, color: '#0F6E56', bg: '#E1F5EE' },
+                { label: 'No Acuity Match', value: data.orphanCount, color: '#A32D2D', bg: '#FCEBEB' },
+              ].map((s, i) => (
+                <div key={i} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 11, color: s.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Filter + bulk actions */}
+          {data && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setFilterOrphans(true)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: filterOrphans ? '#A32D2D' : '#F0F4F7', color: filterOrphans ? '#fff' : '#666', border: 'none' }}>
+                  No Match ({data.orphanCount})
+                </button>
+                <button onClick={() => setFilterOrphans(false)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: !filterOrphans ? '#1B8DB3' : '#F0F4F7', color: !filterOrphans ? '#fff' : '#666', border: 'none' }}>
+                  All ({data.total})
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {selected.size > 0 && (
+                  <>
+                    <span style={{ fontSize: 12, color: '#888' }}>{selected.size} selected</span>
+                    <button onClick={clearAll} style={{ ...S.btnSm, fontSize: 11 }}>Clear</button>
+                    <button onClick={deleteSelected} disabled={deleting} style={{ ...S.btnSm, background: '#A32D2D', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12 }}>
+                      {deleting ? 'Deleting…' : `🗑 Delete ${selected.size}`}
+                    </button>
+                  </>
+                )}
+                {selected.size === 0 && displayList.length > 0 && (
+                  <button onClick={selectAll} style={{ ...S.btnSm, fontSize: 11 }}>Select all {displayList.length}</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Results list */}
+          {!data && !loading && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#aaa' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Ready to compare</div>
+              <div style={{ fontSize: 13 }}>Hit "Run Check" to pull Acuity clients and compare against studio-memberships</div>
+            </div>
+          )}
+
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#888' }}>
+              <div style={{ fontSize: 13 }}>⏳ Fetching Acuity clients and comparing {members.length} records…</div>
+            </div>
+          )}
+
+          {data && displayList.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#aaa' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>All records match Acuity clients</div>
+            </div>
+          )}
+
+          {data && displayList.length > 0 && (
+            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+              <table style={S.table}>
+                <thead>
+                  <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
+                    <th style={{ ...S.th, width: '3%' }}></th>
+                    <th style={{ ...S.th, width: '20%' }}>Studio Record</th>
+                    <th style={{ ...S.th, width: '18%' }}>Email</th>
+                    <th style={{ ...S.th, width: '10%' }}>Status</th>
+                    <th style={{ ...S.th, width: '10%' }}>Last Visit</th>
+                    <th style={{ ...S.th, width: '15%' }}>Acuity Match</th>
+                    <th style={{ ...S.th, width: '14%' }}>Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayList.map(r => (
+                    <tr key={r._id} style={{ borderBottom: '0.5px solid #f0f0f0', background: selected.has(r._id) ? '#FFF0F0' : r.isOrphan ? '#FFFBFB' : 'transparent', cursor: 'pointer' }}
+                      onClick={() => toggleSelect(r._id)}>
+                      <td style={S.td}>
+                        <input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)}
+                          onClick={e => e.stopPropagation()} style={{ cursor: 'pointer' }} />
+                      </td>
+                      <td style={S.td}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{r.firstName} {r.lastName}</div>
+                        <div style={{ fontSize: 10, color: '#aaa' }}>{r.phone || '—'}</div>
+                      </td>
+                      <td style={{ ...S.td, fontSize: 11, color: '#555' }}>{r.email || '—'}</td>
+                      <td style={S.td}><StatusBadge status={r.status} /></td>
+                      <td style={{ ...S.td, fontSize: 11, color: r.daysSinceLastAppt > 180 ? '#A32D2D' : '#666' }}>
+                        {r.daysSinceLastAppt != null ? `${r.daysSinceLastAppt}d ago` : '—'}
+                      </td>
+                      <td style={{ ...S.td, fontSize: 11 }}>
+                        {r.bestAcuityMatch ? (
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{r.bestAcuityMatch.firstName} {r.bestAcuityMatch.lastName}</div>
+                            <div style={{ color: '#aaa', fontSize: 10 }}>{r.bestAcuityMatch.email || '—'}</div>
+                          </div>
+                        ) : <span style={{ color: '#ccc' }}>None found</span>}
+                      </td>
+                      <td style={S.td}>
+                        <span style={{ background: scoreColor(r.matchScore) + '22', color: scoreColor(r.matchScore), padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                          {scoreLabel(r.matchScore)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
     }
-
-    function skip() { setSkipped(s => s + 1); setIdx(i => i + 1); }
-
-    if (total === 0 || idx >= total) return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
-        <div style={{ fontSize: 64 }}>🎉</div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Drew!</div>
-        <div style={{ fontSize: 14, color: '#888' }}>{done} processed · {skipped} skipped</div>
-        <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
-      </div>
-    );
 
     return (
       <div>
         <div style={S.pageHeader}>
           <div>
-            <div style={S.pageTitle}>Member Cleanup <span style={{ fontSize: 13, color: '#1B8DB3', fontWeight: 600 }}>— Drew Mode 🧹</span></div>
-            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped</div>
+            <div style={S.pageTitle}>
+              Admin Master Tools <span style={{ fontSize: 13, color: '#1B8DB3', fontWeight: 600 }}>🏆</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Drew's domain. Handle with care.</div>
           </div>
           <button style={S.btn} onClick={() => nav('dashboard')}>Exit</button>
         </div>
-        <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 2, marginBottom: 24, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
+          {[
+            { key: 'assign', label: `📋 Assign Packages (${members.filter(m => !m.pkg || m.pkg === '').length})` },
+            { key: 'clean', label: '🧹 Clean Records' },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              padding: '8px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              fontFamily: 'system-ui, sans-serif', fontWeight: 600, border: 'none',
+              background: tab === t.key ? '#fff' : 'transparent',
+              color: tab === t.key ? '#1B8DB3' : '#888',
+              boxShadow: tab === t.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s',
+            }}>{t.label}</button>
+          ))}
         </div>
-        <div style={{ maxWidth: 520, margin: '0 auto' }}>
-          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E8ECF0', padding: '2rem', boxShadow: '0 8px 32px rgba(27,141,179,0.08)', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{ini(current)}</div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>{fullName(current)}</div>
-                <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{current.email || 'No email'}</div>
-                <div style={{ fontSize: 13, color: '#888' }}>{current.phone || 'No phone'}</div>
-              </div>
-            </div>
-            <div style={{ background: '#F8FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
-              {current.daysSinceLastAppt != null && (
-                <div style={{ fontSize: 13, color: current.daysSinceLastAppt > 180 ? '#A32D2D' : current.daysSinceLastAppt > 90 ? '#854F0B' : '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
-                  {current.daysSinceLastAppt === 0 ? '🟢 Visited today' : `📅 Last visit: ${current.daysSinceLastAppt} days ago`}
-                </div>
-              )}
-              {current.notes ? <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div> : <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Package</label>
-              <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)} style={{ ...S.input, fontSize: 14, padding: '10px 12px' }}>
-                <option value="">Select a package…</option>
-                {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={assignPkg} disabled={!selectedPkg} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0', color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default', transition: 'all 0.2s' }}>
-                ✓ Assign as Member
-              </button>
-              <button onClick={markInactive} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                ✕ Mark Inactive
-              </button>
-            </div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>Skip for now →</button>
-          </div>
-          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>{total - idx - 1} remaining after this</div>
-        </div>
+
+        {tab === 'assign' && <AssignTab />}
+        {tab === 'clean' && <CleanRecordsTab />}
       </div>
     );
   }
@@ -400,7 +640,7 @@ function Dashboard() {
             ))}
             <div style={S.navSection}>Tools</div>
             <div style={{ ...S.navItem, ...(page === 'cleanup' ? S.navItemActive : {}), ...(unassignedCount > 0 ? { color: '#1B8DB3' } : {}) }} onClick={() => nav('cleanup')}>
-              <i className="ti ti-brush" style={{ fontSize: 15 }} /><span>Member Cleanup</span>
+              <i className="ti ti-shield-check" style={{ fontSize: 15 }} /><span>Admin Master 🏆</span>
               {unassignedCount > 0 && <span style={{ ...S.navBadge, background: '#EBF6FB', color: '#1B8DB3' }}>{unassignedCount}</span>}
             </div>
             <div style={{ ...S.navItem, ...(page === 'addmember' ? S.navItemActive : {}) }} onClick={() => nav('addmember')}>
@@ -487,7 +727,7 @@ function Dashboard() {
                     <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', border: '1px solid #B5D4E4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 14, color: '#1B8DB3' }}>🧹 {unassignedCount} members need review</div>
-                        <div style={{ fontSize: 12, color: '#5A9AB5', marginTop: 2 }}>Drew, time to earn your keep.</div>
+                        <div style={{ fontSize: 12, color: '#5A9AB5', marginTop: 2 }}>Admin Master, time to earn that title.</div>
                       </div>
                       <button onClick={() => nav('cleanup')} style={{ ...S.btnPrimary, fontSize: 13, padding: '8px 16px' }}>Start Cleanup →</button>
                     </div>
