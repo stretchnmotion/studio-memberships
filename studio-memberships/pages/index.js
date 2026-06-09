@@ -1,1133 +1,1201 @@
-import { useState, useEffect, useRef } from 'react';
-import Head from 'next/head';
-import Papa from 'papaparse';
-
-const PACKAGES = [
-  { name: 'Intro session', price: 58, sessions: 1, type: 'Stretch therapy', notes: '25-min session, first visit' },
-  { name: 'Walk-in', price: 95, sessions: 1, type: 'Stretch therapy', notes: '25-min single session' },
-  { name: '4x/month', price: 170, sessions: 4, type: 'Stretch therapy', notes: '25-min sessions' },
-  { name: '4x/month — First Responder', price: 153, sessions: 4, type: 'Stretch therapy', notes: '25-min sessions, first responder rate' },
-  { name: '8x/month', price: 320, sessions: 8, type: 'Stretch therapy', notes: '25-min sessions' },
-  { name: '8x/month — First Responder', price: 288, sessions: 8, type: 'Stretch therapy', notes: '25-min sessions, first responder rate' },
-  { name: '16x/month', price: 520, sessions: 16, type: 'Stretch therapy', notes: '25-min sessions' },
-];
-
-function ini(m) { return ((m.firstName||'?')[0] + (m.lastName||'?')[0]).toUpperCase(); }
-function fullName(m) { return `${m.firstName} ${m.lastName}`; }
-
-function StatusBadge({ status }) {
-  const map = {
-    active: { bg: '#E1F5EE', color: '#0F6E56', label: 'Active' },
-    declined: { bg: '#FCEBEB', color: '#A32D2D', label: 'Declined' },
-    expiring: { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
-    paused: { bg: '#F1EFE8', color: '#5F5E5A', label: 'Paused' },
-    inactive: { bg: '#F0F0F0', color: '#888', label: 'Inactive' },
-  };
-  const s = map[status] || map.active;
-  return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>{s.label}</span>;
+<!DOCTYPE html>
+<!-- SNM Booking v14 - over-limit rates hidden -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Your Session — Stretch N Motion</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&family=Barlow:wght@400;500&display=swap');
+:root {
+  --teal: #1a86a0; --teal-dark: #0f5a70; --teal-light: #e8f6fa;
+  --text: #111; --text-muted: #5a6a72; --text-faint: #9ca3af;
+  --border: rgba(0,0,0,0.09); --bg: #fff; --bg-surface: #f4f9fb;
+  --radius: 8px; --radius-lg: 12px;
+  --amber: #b45309; --amber-bg: #fffbeb; --amber-border: #fcd34d;
+  --red: #b91c1c; --red-bg: #fef2f2; --red-border: #fca5a5;
 }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; min-height: 100vh; }
+body { font-family: 'Barlow', sans-serif; background: #f4f9fb; color: var(--text); }
+.wrap { max-width: 640px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+.logo-block { margin-bottom: 2rem; display: flex; justify-content: center; }
+.logo-outer { background: var(--teal); padding: 14px 18px; display: inline-block; position: relative; }
+.logo-shadow { position: absolute; top: 7px; left: 7px; right: -7px; bottom: -7px; background: rgba(26,134,160,0.32); z-index: 0; }
+.logo-inner { background: #fff; padding: 8px 18px 10px; position: relative; z-index: 1; }
+.logo-name { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 700; font-size: 26px; color: var(--teal); line-height: 1.05; }
+.logo-sub { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 10px; color: var(--teal); letter-spacing: 0.18em; margin-top: 2px; }
+.logo-tagline { font-size: 11px; color: rgba(255,255,255,0.85); margin-top: 7px; letter-spacing: 0.04em; text-align: center; }
+.step-bar { display: flex; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); margin-bottom: 2rem; }
+.step { flex: 1; padding: 9px 6px; font-size: 10px; display: flex; align-items: center; gap: 5px; color: var(--text-faint); background: #fff; border-right: 1px solid var(--border); }
+.step:last-child { border-right: none; }
+.step.active { background: var(--teal-dark); color: #7de8ef; }
+.step.done { background: var(--teal-light); color: var(--teal); }
+.step-n { width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 500; flex-shrink: 0; }
+.step.active .step-n { background: #7de8ef; color: var(--teal-dark); border-color: #7de8ef; }
+.step.done .step-n { background: var(--teal); color: #fff; border-color: var(--teal); }
+.sec-label { font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.65rem; }
+.card { background: var(--bg); border-radius: var(--radius-lg); border: 1px solid var(--border); padding: 1.1rem; margin-bottom: 1.25rem; }
+.loc-row { display: flex; gap: 8px; margin-bottom: 1.25rem; }
+.loc-btn { flex: 1; padding: 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: left; transition: border-color 0.15s; font-family: 'Barlow', sans-serif; }
+.loc-btn:hover { border-color: var(--teal); }
+.loc-btn.sel { border: 2px solid var(--teal); background: var(--teal-light); }
+.loc-name { font-size: 14px; font-weight: 500; color: var(--text); }
+.loc-addr { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.notice { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; padding: 10px 12px; border-radius: var(--radius); margin-bottom: 0.85rem; line-height: 1.6; }
+.notice.amber { color: var(--amber); background: var(--amber-bg); border: 1px solid var(--amber-border); }
+.notice.red { color: var(--red); background: var(--red-bg); border: 1px solid var(--red-border); }
+.notice.teal { color: var(--teal-dark); background: var(--teal-light); border: 1px solid var(--teal); }
+.notice-icon { flex-shrink: 0; margin-top: 1px; }
+.hint { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-muted); padding: 8px 12px; background: var(--bg-surface); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 0.85rem; line-height: 1.5; }
+.hint-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); flex-shrink: 0; margin-top: 4px; }
+.t-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 1.25rem; }
+.t-card { border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--bg); padding: 0.9rem; cursor: pointer; transition: border-color 0.15s, transform 0.1s; position: relative; user-select: none; }
+.t-card:hover:not(.maxed) { border-color: var(--teal); transform: translateY(-1px); }
+.t-card.sel1 { border: 2px solid var(--teal); background: var(--teal-light); }
+.t-card.sel2 { border: 2px solid var(--teal-dark); background: var(--teal-light); }
+.t-card.sel3 { border: 2px solid #0a7d5c; background: #ecfdf5; }
+.t-card.maxed { opacity: 0.3; pointer-events: none; }
+.t-av { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; margin-bottom: 8px; }
+.t-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.t-spec { font-size: 10px; color: var(--text-muted); line-height: 1.4; }
+.t-badge { position: absolute; top: 7px; right: 7px; font-size: 9px; font-weight: 500; padding: 2px 6px; border-radius: 99px; }
+.b1 { background: var(--teal); color: #fff; }
+.b2 { background: var(--teal-dark); color: #7de8ef; }
+.b3 { background: #0a7d5c; color: #fff; }
+.sel-bar { display: flex; align-items: center; gap: 8px; background: var(--bg-surface); border-radius: var(--radius); padding: 11px 14px; margin-bottom: 1.25rem; border: 1px solid var(--border); min-height: 52px; }
+.sel-slot { flex: 1; }
+.sel-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 2px; }
+.sel-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.sel-empty { font-size: 11px; color: var(--text-faint); font-style: italic; }
+.sel-div { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
+.btn-row { display: flex; gap: 10px; margin-top: 0.5rem; }
+.btn-p { flex: 1; padding: 13px; background: var(--teal-dark); color: #7de8ef; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 500; font-family: 'Barlow', sans-serif; cursor: pointer; transition: background 0.15s; }
+.btn-p:hover:not(:disabled) { background: #0a3f52; }
+.btn-p:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-s { padding: 13px 18px; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; font-family: 'Barlow', sans-serif; cursor: pointer; }
+.btn-s:hover { background: var(--bg-surface); }
+.page { display: none; }
+.page.active { display: block; }
+.dur-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+.dur-btn { padding: 16px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: center; transition: border-color 0.15s; font-family: 'Barlow', sans-serif; }
+.dur-btn:hover { border-color: var(--teal); }
+.dur-btn.sel { border: 2px solid var(--teal); background: var(--teal-light); }
+.dur-min { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; color: var(--text); }
+.dur-label { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+.dur-tag { font-size: 9px; font-weight: 500; padding: 2px 6px; border-radius: 99px; margin-top: 5px; display: inline-block; }
+.tag-std { background: var(--teal-light); color: var(--teal); }
+.tag-addon { background: var(--amber-bg); color: var(--amber); }
+.addon-row { display: flex; gap: 8px; margin-bottom: 1.25rem; }
+.addon-btn { flex: 1; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: left; transition: border-color 0.15s; font-family: 'Barlow', sans-serif; }
+.addon-btn:hover { border-color: var(--teal); }
+.addon-btn.sel { border: 2px solid var(--teal); background: var(--teal-light); }
+.addon-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.addon-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; }
+.cal-nav-btn { padding: 6px 13px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-size: 12px; color: var(--text-muted); font-family: 'Barlow', sans-serif; }
+.cal-nav-btn:hover { border-color: var(--teal); }
+.cal-month { font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 600; color: var(--text); }
+.date-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 1.25rem; }
+.date-hdr { text-align: center; font-size: 9px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; padding-bottom: 4px; }
+.date-btn { padding: 9px 3px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: center; transition: border-color 0.15s; font-family: 'Barlow', sans-serif; }
+.date-btn:hover:not(.unavail):not(.empty):not(.closed) { border-color: var(--teal); }
+.date-btn.sel { border: 2px solid var(--teal); background: var(--teal-light); }
+.date-btn.unavail { opacity: 0.22; pointer-events: none; }
+.date-btn.empty { border-color: transparent; background: transparent; pointer-events: none; }
+.date-btn.today { border-color: #7de8ef; }
+.date-btn.closed { opacity: 0.15; pointer-events: none; background: #f0f0f0; }
+.date-num { font-size: 13px; color: var(--text); }
+.date-closed-lbl { font-size: 8px; color: var(--text-faint); margin-top: 1px; }
+.time-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 7px; margin-bottom: 1.25rem; }
+.time-btn { padding: 11px 6px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: center; font-size: 12px; font-weight: 500; color: var(--text); font-family: 'Barlow', sans-serif; transition: border-color 0.15s; }
+.time-btn:hover { border-color: var(--teal); }
+.time-btn.sel { border: 2px solid var(--teal); color: var(--teal); background: var(--teal-light); }
+.time-sub { font-size: 9px; color: var(--text-muted); margin-top: 3px; font-weight: 400; line-height: 1.4; }
+.loading { text-align: center; padding: 2rem; font-size: 12px; color: var(--text-muted); }
+.loading-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--teal); margin: 0 2px; animation: pulse 1.2s ease-in-out infinite; }
+.loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.loading-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes pulse { 0%,80%,100%{opacity:0.2;}40%{opacity:1;} }
+.form-group { margin-bottom: 0.85rem; }
+.form-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+.form-input { width: 100%; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); font-size: 13px; color: var(--text); font-family: 'Barlow', sans-serif; outline: none; }
+.form-input[readonly] { background: var(--bg-surface); color: var(--text-muted); cursor: default; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sum-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; gap: 12px; }
+.sum-row:last-child { border-bottom: none; }
+.sum-lbl { color: var(--text-muted); flex-shrink: 0; }
+.sum-val { font-weight: 500; color: var(--text); text-align: right; }
+.consent-box { background: var(--bg-surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 11px 13px; margin-bottom: 0.85rem; }
+.consent-box p { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+.checkbox-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; }
+.checkbox-row input { margin-top: 2px; accent-color: var(--teal); flex-shrink: 0; }
+.checkbox-row label { font-size: 11px; color: var(--text-muted); line-height: 1.5; cursor: pointer; }
+.error-msg { font-size: 12px; color: var(--red); padding: 9px 13px; background: var(--red-bg); border: 1px solid var(--red-border); border-radius: var(--radius); margin-bottom: 0.85rem; display: none; }
+.error-msg.show { display: block; }
+.no-times { text-align: center; padding: 1.5rem; font-size: 12px; color: var(--text-muted); }
+.gate-wrap { text-align: center; padding: 3rem 1rem; }
+.gate-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--teal-dark); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; }
+.gate-title { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 700; font-size: 24px; color: var(--text); margin-bottom: 0.5rem; }
+.gate-sub { font-size: 13px; color: var(--text-muted); line-height: 1.7; margin-bottom: 1.5rem; }
+.welcome-banner { background: var(--teal-dark); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.welcome-name { font-size: 14px; font-weight: 500; color: #7de8ef; }
+.welcome-sub { font-size: 11px; color: rgba(125,232,239,0.7); margin-top: 1px; }
+.session-pill { font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 99px; background: rgba(125,232,239,0.15); color: #7de8ef; white-space: nowrap; }
+.session-pill.over { background: rgba(252,211,77,0.2); color: #fcd34d; }
+.success-wrap { text-align: center; padding: 3rem 1rem; }
+.success-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--teal-dark); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; }
+.success-title { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 700; font-size: 28px; color: var(--text); margin-bottom: 0.5rem; }
+.success-sub { font-size: 13px; color: var(--text-muted); line-height: 1.7; max-width: 380px; margin: 0 auto; }
 
-function FlagPill({ reason }) {
-  const map = {
-    card: { bg: '#FCEBEB', color: '#A32D2D', label: 'Card declined' },
-    expiring: { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
-    inactive: { bg: '#E6F1FB', color: '#185FA5', label: 'Inactive' },
-    manual: { bg: '#EEEDFE', color: '#534AB7', label: 'Manual' },
-  };
-  const p = map[reason] || map.manual;
-  return <span style={{ background: p.bg, color: p.color, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>{p.label}</span>;
-}
+.any-avail-btn { width: 100%; padding: 14px 16px; border-radius: var(--radius); border: 2px dashed var(--border); background: var(--bg); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; margin-bottom: 0.85rem; font-family: 'Barlow', sans-serif; }
+.any-avail-btn:hover { border-color: var(--teal); background: var(--teal-light); }
+.any-avail-btn.sel { border-color: var(--teal); background: var(--teal-light); border-style: solid; }
+.any-avail-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.any-avail-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+</style>
 
-export default function Home() {
-  const [authed, setAuthed] = useState(false);
-  const [pwInput, setPwInput] = useState('');
-  const [pwError, setPwError] = useState('');
-  const [pwLoading, setPwLoading] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('studio_auth') === 'true') setAuthed(true);
-  }, []);
-
-  async function handleLogin() {
-    setPwLoading(true); setPwError('');
-    const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwInput }) });
-    if (res.ok) { sessionStorage.setItem('studio_auth', 'true'); setAuthed(true); }
-    else setPwError('Incorrect password. Try again.');
-    setPwLoading(false);
-  }
-
-  if (!authed) return (
-    <>
-      <Head>
-        <title>Stretch N Motion — Staff Login</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
-      </Head>
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1B8DB3 0%, #0d6a8a 100%)', fontFamily: 'system-ui, sans-serif' }}>
-        <div style={{ background: '#fff', borderRadius: 16, padding: '2.5rem', width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-          <div style={{ marginBottom: 28, textAlign: 'center' }}>
-            <div style={{ background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', borderRadius: 10, padding: '14px 20px', marginBottom: 18, display: 'inline-block', boxShadow: '0 4px 12px rgba(27,141,179,0.3)' }}>
-              <div style={{ fontSize: 20, fontWeight: 900, fontStyle: 'italic', color: '#fff', textTransform: 'uppercase', letterSpacing: '-0.5px', lineHeight: 1.1 }}>STRETCH N<br/>MOTION</div>
-              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.8)', marginTop: 4, letterSpacing: '2px', textTransform: 'uppercase', fontWeight: 600 }}>MOBILITY STUDIO · MEMBERS</div>
-            </div>
-            <div style={{ fontSize: 13, color: '#999', fontWeight: 500 }}>Staff access only</div>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, color: '#999', display: 'block', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Password</label>
-            <input type="password" style={{ fontFamily: 'system-ui, sans-serif', fontSize: 14, color: '#1a1a1a', background: '#F8FAFB', border: '1.5px solid #E8ECF0', borderRadius: 10, padding: '10px 12px', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-              value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="Enter staff password" autoFocus />
-          </div>
-          {pwError && <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 12, background: '#FFF0F0', padding: '8px 12px', borderRadius: 8 }}>{pwError}</div>}
-          <button onClick={handleLogin} disabled={pwLoading} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(27,141,179,0.3)' }}>
-            {pwLoading ? 'Checking…' : 'Log in →'}
-          </button>
-        </div>
+<div class="wrap">
+  <div class="logo-block">
+    <div class="logo-outer">
+      <div class="logo-shadow"></div>
+      <div class="logo-inner">
+        <div class="logo-name">STRETCH N<br>MOTION</div>
+        <div class="logo-sub">MOBILITY STUDIO</div>
       </div>
-    </>
-  );
+      <div class="logo-tagline">Member Booking Portal</div>
+    </div>
+  </div>
 
-  return <Dashboard />;
-}
+  <div id="gate" style="display:none">
+    <div class="gate-wrap">
+      <div class="gate-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2C8 2 5 5 5 9V10H4C3.4 10 3 10.4 3 11V21C3 21.6 3.4 22 4 22H20C20.6 22 21 21.6 21 21V11C21 10.4 20.6 10 20 10H19V9C19 5 16 2 12 2ZM12 4C14.8 4 17 6.2 17 9V10H7V9C7 6.2 9.2 4 12 4ZM12 14C12.6 14 13 14.4 13 15C13 15.6 12.6 16 12 16C11.4 16 11 15.6 11 15C11 14.4 11.4 14 12 14Z" fill="#7de8ef"/></svg></div>
+      <div class="gate-title">Members Only</div>
+      <div class="gate-sub">This booking portal is for active Stretch N Motion members only. Please use the personal link sent to you when you joined.<br><br>Need help? <strong>stretchnmotion@gmail.com</strong></div>
 
-function Dashboard() {
-  const [page, setPage] = useState('dashboard');
-  const [members, setMembers] = useState([]);
-  const [flags, setFlags] = useState([]);
-  const [packages, setPackages] = useState(PACKAGES);
-  const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [showSearchDrop, setShowSearchDrop] = useState(false);
-  const [detailMember, setDetailMember] = useState(null);
-  const [detailBack, setDetailBack] = useState('members');
-  const [flagTab, setFlagTab] = useState('open');
-  const [memberFilter, setMemberFilter] = useState('active');
-  const [pkgFilter, setPkgFilter] = useState('all');
-  const [showFlagModal, setShowFlagModal] = useState(false);
-  const [showPkgModal, setShowPkgModal] = useState(false);
-  const [flagForm, setFlagForm] = useState({ memberId: '', reason: 'card', note: '' });
-  const [pkgForm, setPkgForm] = useState({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
-  const [newMember, setNewMember] = useState({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '' });
-  const [nmSuccess, setNmSuccess] = useState(false);
-  const [importMsg, setImportMsg] = useState('');
-  const [loading, setLoading] = useState(true);
-  const fileRef = useRef();
-  const searchRef = useRef();
+    </div>
+  </div>
 
-  useEffect(() => {
-    fetchAll();
-    document.addEventListener('click', handleOutsideClick);
-    return () => document.removeEventListener('click', handleOutsideClick);
-  }, []);
+  <div id="suspended" style="display:none">
+    <div class="gate-wrap">
+      <div class="gate-icon" style="background:var(--red)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 19H22L12 2ZM12 16C11.4 16 11 15.6 11 15C11 14.4 11.4 14 12 14C12.6 14 13 14.4 13 15C13 15.6 12.6 16 12 16ZM11 13V9H13V13H11Z" fill="#fff"/></svg></div>
+      <div class="gate-title" style="color:var(--red)">Booking Access Suspended</div>
+      <div class="gate-sub">Your booking access has been temporarily suspended. Please contact us.<br><br><strong>stretchnmotion@gmail.com</strong></div>
+    </div>
+  </div>
 
-  function handleOutsideClick(e) {
-    if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchDrop(false);
-  }
-
-  async function fetchAll() {
-    setLoading(true);
-    try {
-      const [mr, fr] = await Promise.all([fetch('/api/members'), fetch('/api/flags')]);
-      const [md, fd] = await Promise.all([mr.json(), fr.json()]);
-      setMembers(Array.isArray(md) ? md : []);
-      setFlags(Array.isArray(fd) ? fd : []);
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  }
-
-  function openFlags() { return flags.filter(f => !f.resolved); }
-  function memberFlags(id) { return flags.filter(f => !f.resolved && String(f.memberId) === String(id)); }
-  function cardFlags() { return openFlags().filter(f => f.reason === 'card'); }
-  function otherFlags() { return openFlags().filter(f => f.reason !== 'card'); }
-
-  function nav(p) { setPage(p); setSearch(''); setShowSearchDrop(false); setShowFlagModal(false); setShowPkgModal(false); }
-  function viewMember(m, back) { setDetailMember(m); setDetailBack(back || page); setPage('detail'); }
-
-  function handleSearch(val) {
-    setSearch(val);
-    if (!val.trim()) { setShowSearchDrop(false); return; }
-    const q = val.toLowerCase();
-    const res = members.filter(m => (fullName(m) + (m.email||'') + (m.pkg||'') + (m.phone||'')).toLowerCase().includes(q)).slice(0, 6);
-    setSearchResults(res); setShowSearchDrop(res.length > 0);
-  }
-
-  async function addMember() {
-    if (!newMember.firstName || !newMember.lastName || !newMember.email) { alert('Name and email are required.'); return; }
-    const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newMember, credits: 0, status: 'active', createdAt: new Date() }) });
-    const doc = await res.json();
-    setMembers(prev => [...prev, doc]);
-    setNewMember({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '' });
-    setNmSuccess(true); setTimeout(() => setNmSuccess(false), 3000);
-  }
-
-  async function updateMember(m, updates) {
-    const updated = { ...m, ...updates };
-    await fetch('/api/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-    setMembers(prev => prev.map(x => String(x._id) === String(m._id) ? updated : x));
-    setDetailMember(prev => prev && String(prev._id) === String(m._id) ? updated : prev);
-  }
-
-  async function removeMember(m) {
-    if (!confirm(`Remove ${fullName(m)}? This cannot be undone.`)) return;
-    await fetch(`/api/members?id=${m._id}`, { method: 'DELETE' });
-    setMembers(prev => prev.filter(x => String(x._id) !== String(m._id)));
-    setFlags(prev => prev.filter(f => String(f.memberId) !== String(m._id)));
-    nav('members');
-  }
-
-  async function addFlag() {
-    if (!flagForm.memberId) { alert('Select a member.'); return; }
-    const res = await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...flagForm, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }) });
-    const doc = await res.json();
-    setFlags(prev => [doc, ...prev]); setShowFlagModal(false); setFlagForm({ memberId: '', reason: 'card', note: '' });
-  }
-
-  async function resolveFlag(f) {
-    await fetch('/api/flags', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...f, resolved: true }) });
-    setFlags(prev => prev.map(x => String(x._id) === String(f._id) ? { ...x, resolved: true } : x));
-  }
-
-  function addPackage() {
-    if (!pkgForm.name) { alert('Package name required.'); return; }
-    setPackages(prev => [...prev, { ...pkgForm, price: parseInt(pkgForm.price) || 0, sessions: parseInt(pkgForm.sessions) || null }]);
-    setShowPkgModal(false); setPkgForm({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
-  }
-
-  function handleCSV(e) {
-    const file = e.target.files[0]; if (!file) return;
-    setImportMsg('');
-    Papa.parse(file, {
-      header: true, skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const res = await fetch('/api/members/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members: results.data }) });
-          const data = await res.json();
-          setImportMsg(`✓ ${data.inserted} new, ${data.updated} updated`);
-          fetchAll();
-        } catch { setImportMsg('Import failed.'); }
-      }
-    });
-  }
-
-  const activeMembers = members.filter(m => m.status === 'active');
-  const activeCount = activeMembers.length;
-  const openFlagCount = openFlags().length;
-  const expiringCount = members.filter(m => m.status === 'expiring').length;
-  const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
-  const revenue = activeMembers.reduce((a, m) => {
-    const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
-  }, 0);
-
-  // Package tier breakdown
-  const tierBreakdown = packages.map(p => ({
-    ...p,
-    count: activeMembers.filter(m => m.name === p.name || m.pkg === p.name).length,
-  }));
-
-  // Filtered members for the members page
-  const filteredMembers = members.filter(m => {
-    const statusMatch = memberFilter === 'all' ? true : m.status === memberFilter;
-    const pkgMatch = pkgFilter === 'all' ? true : pkgFilter === 'none' ? (!m.pkg || m.pkg === '') : m.pkg === pkgFilter;
-    return statusMatch && pkgMatch;
-  });
-
-  const S = styles;
-
-  function FlagSection({ title, flagList, color, icon }) {
-    if (flagList.length === 0) return null;
-    return (
-      <div style={{ ...S.card, borderLeft: `3px solid ${color}` }}>
-        <div style={{ ...S.cardTitle, color }}>
-          <i className={`ti ${icon}`} style={{ fontSize: 13, marginRight: 6 }} />{title}
-          <span style={{ marginLeft: 8, background: color + '22', color, borderRadius: 10, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>{flagList.length}</span>
-        </div>
-        {flagList.map(f => {
-          const m = members.find(x => String(x._id) === String(f.memberId)); if (!m) return null;
-          return (
-            <div key={String(f._id)} style={S.flagRow}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={S.avatar}>{ini(m)}</div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} />
-                  </div>
-                  <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{f.note || 'No note'} · {f.date}</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button style={S.btnSm} onClick={() => viewMember(m, page)}>View</button>
-                <button style={{ ...S.btnSm, color: '#1D9E75', borderColor: '#9FE1CB' }} onClick={() => resolveFlag(f)}>Resolve</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function DrewMode() {
-    const [tab, setTab] = useState('assign');
-
-    // ── Tab 1: Package Assignment ─────────────────────────────────────────
-    function AssignTab() {
-      const unassigned = members.filter(m => !m.pkg || m.pkg === '');
-      const [idx, setIdx] = useState(0);
-      const [selectedPkg, setSelectedPkg] = useState('');
-      const [done, setDone] = useState(0);
-      const [skipped, setSkipped] = useState(0);
-
-      const current = unassigned[idx];
-      const total = unassigned.length;
-      const pct = total > 0 ? Math.round((idx / total) * 100) : 100;
-
-      async function assignPkg() {
-        if (!selectedPkg) return;
-        await updateMember(current, { pkg: selectedPkg, status: 'active' });
-        setDone(d => d + 1); setSelectedPkg(''); setIdx(i => i + 1);
-      }
-      async function deleteRecord() {
-        if (!confirm(`Delete ${fullName(current)} from studio-memberships? This cannot be undone.`)) return;
-        await fetch(`/api/members?id=${current._id}`, { method: 'DELETE' });
-        setMembers(prev => prev.filter(x => String(x._id) !== String(current._id)));
-        setDone(d => d + 1); setIdx(i => i + 1);
-      }
-      function skip() { setSkipped(s => s + 1); setIdx(i => i + 1); }
-
-      if (total === 0 || idx >= total) return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 16 }}>
-          <div style={{ fontSize: 64 }}>🎉</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Admin Master!</div>
-          <div style={{ fontSize: 14, color: '#888' }}>{done} processed · {skipped} skipped</div>
-          <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
-        </div>
-      );
-
-      return (
-        <div>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped</div>
-          <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
-          </div>
-          <div style={{ maxWidth: 520, margin: '0 auto' }}>
-            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E8ECF0', padding: '2rem', boxShadow: '0 8px 32px rgba(27,141,179,0.08)', marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{ini(current)}</div>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>{fullName(current)}</div>
-                  <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{current.email || 'No email'}</div>
-                  <div style={{ fontSize: 13, color: '#888' }}>{current.phone || 'No phone'}</div>
-                </div>
-              </div>
-              <div style={{ background: '#F8FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
-                {current.daysSinceLastAppt != null ? (
-                  <div style={{ fontSize: 13, color: current.daysSinceLastAppt > 180 ? '#A32D2D' : current.daysSinceLastAppt > 90 ? '#854F0B' : '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
-                    {current.daysSinceLastAppt === 0 ? '🟢 Visited today' : `📅 Last visit: ${current.daysSinceLastAppt} days ago`}
-                  </div>
-                ) : null}
-                {current.notes ? <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>"{current.notes}"</div> : <div style={{ fontSize: 12, color: '#aaa' }}>No visit history or notes on file.</div>}
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Package</label>
-                <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)} style={{ ...S.input, fontSize: 14, padding: '10px 12px' }}>
-                  <option value="">Select a package…</option>
-                  {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={assignPkg} disabled={!selectedPkg} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: selectedPkg ? 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' : '#E8ECF0', color: selectedPkg ? '#fff' : '#aaa', fontSize: 14, fontWeight: 700, cursor: selectedPkg ? 'pointer' : 'default', transition: 'all 0.2s' }}>
-                  ✓ Assign as Member
-                </button>
-                <button onClick={deleteRecord} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #F7C1C1', background: '#FFF8F8', color: '#A32D2D', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                  🗑 Delete Record
-                </button>
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <button onClick={skip} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>Skip for now →</button>
-            </div>
-            <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#ccc' }}>{total - idx - 1} remaining after this</div>
-          </div>
-        </div>
-      );
-    }
-
-    // ── Tab 2: Clean Records ──────────────────────────────────────────────
-    function CleanRecordsTab() {
-      const [loading, setLoading] = useState(false);
-      const [data, setData] = useState(null);
-      const [selected, setSelected] = useState(new Set());
-      const [deleting, setDeleting] = useState(false);
-      const [done, setDone] = useState(false);
-      const [filterOrphans, setFilterOrphans] = useState(true);
-
-      async function runCheck() {
-        setLoading(true);
-        setSelected(new Set());
-        try {
-          const res = await fetch('/api/cleanup/orphans');
-          const json = await res.json();
-          setData(json);
-        } catch (err) {
-          alert('Failed to fetch data: ' + err.message);
-        }
-        setLoading(false);
-      }
-
-      function toggleSelect(id) {
-        setSelected(prev => {
-          const next = new Set(prev);
-          next.has(id) ? next.delete(id) : next.add(id);
-          return next;
-        });
-      }
-
-      function selectAll() {
-        const visible = displayList.map(r => r._id);
-        setSelected(new Set(visible));
-      }
-
-      function clearAll() { setSelected(new Set()); }
-
-      async function deleteSelected() {
-        if (selected.size === 0) return;
-        if (!confirm(`Permanently delete ${selected.size} records from studio-memberships? This cannot be undone. Acuity is NOT affected.`)) return;
-        setDeleting(true);
-        try {
-          const res = await fetch('/api/cleanup/orphans', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: Array.from(selected) }),
-          });
-          const result = await res.json();
-          setDone(true);
-          fetchAll();
-          alert(`✓ Deleted ${result.deleted} records from studio-memberships. Acuity unchanged.`);
-          setData(null);
-          setSelected(new Set());
-          setDone(false);
-        } catch (err) {
-          alert('Delete failed: ' + err.message);
-        }
-        setDeleting(false);
-      }
-
-      const displayList = data ? (filterOrphans ? data.results.filter(r => r.isOrphan) : data.results) : [];
-
-      function scoreColor(score) {
-        if (score >= 100) return '#0F6E56';
-        if (score >= 60) return '#854F0B';
-        return '#A32D2D';
-      }
-
-      function scoreLabel(score) {
-        if (score >= 100) return 'Strong match';
-        if (score >= 60) return 'Weak match';
-        return 'No match in Acuity';
-      }
-
-      return (
-        <div>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Clean Records</div>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                Find studio-memberships records with no match in Acuity. Delete safely — Acuity is never touched.
-              </div>
-            </div>
-            <button onClick={runCheck} disabled={loading} style={{ ...S.btnPrimary, fontSize: 13 }}>
-              {loading ? '⏳ Comparing…' : data ? '🔄 Re-run Check' : '🔍 Run Check'}
-            </button>
-          </div>
-
-          {/* Stats */}
-          {data && (
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-              {[
-                { label: 'Studio-Memberships', value: data.total, color: '#1B8DB3', bg: '#EBF6FB' },
-                { label: 'Acuity Clients', value: data.acuityTotal, color: '#0F6E56', bg: '#E1F5EE' },
-                { label: 'No Acuity Match', value: data.orphanCount, color: '#A32D2D', bg: '#FCEBEB' },
-              ].map((s, i) => (
-                <div key={i} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, color: s.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Filter + bulk actions */}
-          {data && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setFilterOrphans(true)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: filterOrphans ? '#A32D2D' : '#F0F4F7', color: filterOrphans ? '#fff' : '#666', border: 'none' }}>
-                  No Match ({data.orphanCount})
-                </button>
-                <button onClick={() => setFilterOrphans(false)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: !filterOrphans ? '#1B8DB3' : '#F0F4F7', color: !filterOrphans ? '#fff' : '#666', border: 'none' }}>
-                  All ({data.total})
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {selected.size > 0 && (
-                  <>
-                    <span style={{ fontSize: 12, color: '#888' }}>{selected.size} selected</span>
-                    <button onClick={clearAll} style={{ ...S.btnSm, fontSize: 11 }}>Clear</button>
-                    <button onClick={deleteSelected} disabled={deleting} style={{ ...S.btnSm, background: '#A32D2D', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12 }}>
-                      {deleting ? 'Deleting…' : `🗑 Delete ${selected.size}`}
-                    </button>
-                  </>
-                )}
-                {selected.size === 0 && displayList.length > 0 && (
-                  <button onClick={selectAll} style={{ ...S.btnSm, fontSize: 11 }}>Select all {displayList.length}</button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Results list */}
-          {!data && !loading && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#aaa' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Ready to compare</div>
-              <div style={{ fontSize: 13 }}>Hit "Run Check" to pull Acuity clients and compare against studio-memberships</div>
-            </div>
-          )}
-
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#888' }}>
-              <div style={{ fontSize: 13 }}>⏳ Fetching Acuity clients and comparing {members.length} records…</div>
-            </div>
-          )}
-
-          {data && displayList.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#aaa' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>All records match Acuity clients</div>
-            </div>
-          )}
-
-          {data && displayList.length > 0 && (
-            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <table style={S.table}>
-                <thead>
-                  <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
-                    <th style={{ ...S.th, width: '3%' }}></th>
-                    <th style={{ ...S.th, width: '20%' }}>Studio Record</th>
-                    <th style={{ ...S.th, width: '18%' }}>Email</th>
-                    <th style={{ ...S.th, width: '10%' }}>Status</th>
-                    <th style={{ ...S.th, width: '10%' }}>Last Visit</th>
-                    <th style={{ ...S.th, width: '15%' }}>Acuity Match</th>
-                    <th style={{ ...S.th, width: '14%' }}>Confidence</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayList.map(r => (
-                    <tr key={r._id} style={{ borderBottom: '0.5px solid #f0f0f0', background: selected.has(r._id) ? '#FFF0F0' : r.isOrphan ? '#FFFBFB' : 'transparent', cursor: 'pointer' }}
-                      onClick={() => toggleSelect(r._id)}>
-                      <td style={S.td}>
-                        <input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)}
-                          onClick={e => e.stopPropagation()} style={{ cursor: 'pointer' }} />
-                      </td>
-                      <td style={S.td}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{r.firstName} {r.lastName}</div>
-                        <div style={{ fontSize: 10, color: '#aaa' }}>{r.phone || '—'}</div>
-                      </td>
-                      <td style={{ ...S.td, fontSize: 11, color: '#555' }}>{r.email || '—'}</td>
-                      <td style={S.td}><StatusBadge status={r.status} /></td>
-                      <td style={{ ...S.td, fontSize: 11, color: r.daysSinceLastAppt > 180 ? '#A32D2D' : '#666' }}>
-                        {r.daysSinceLastAppt != null ? `${r.daysSinceLastAppt}d ago` : '—'}
-                      </td>
-                      <td style={{ ...S.td, fontSize: 11 }}>
-                        {r.bestAcuityMatch ? (
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{r.bestAcuityMatch.firstName} {r.bestAcuityMatch.lastName}</div>
-                            <div style={{ color: '#aaa', fontSize: 10 }}>{r.bestAcuityMatch.email || '—'}</div>
-                          </div>
-                        ) : <span style={{ color: '#ccc' }}>None found</span>}
-                      </td>
-                      <td style={S.td}>
-                        <span style={{ background: scoreColor(r.matchScore) + '22', color: scoreColor(r.matchScore), padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
-                          {scoreLabel(r.matchScore)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return (
+  <!-- NON-MEMBER FLOW -->
+  <div id="nonmember" style="display:none">
+    <div class="welcome-banner" style="background:var(--teal)">
       <div>
-        <div style={S.pageHeader}>
-          <div>
-            <div style={S.pageTitle}>
-              Admin Master Tools <span style={{ fontSize: 13, color: '#1B8DB3', fontWeight: 600 }}>🏆</span>
-            </div>
-            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Drew's domain. Handle with care.</div>
-          </div>
-          <button style={S.btn} onClick={() => nav('dashboard')}>Exit</button>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2, marginBottom: 24, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
-          {[
-            { key: 'assign', label: `📋 Assign Packages (${members.filter(m => !m.pkg || m.pkg === '').length})` },
-            { key: 'clean', label: '🧹 Clean Records' },
-          ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              padding: '8px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-              fontFamily: 'system-ui, sans-serif', fontWeight: 600, border: 'none',
-              background: tab === t.key ? '#fff' : 'transparent',
-              color: tab === t.key ? '#1B8DB3' : '#888',
-              boxShadow: tab === t.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-              transition: 'all 0.15s',
-            }}>{t.label}</button>
-          ))}
-        </div>
-
-        {tab === 'assign' && <AssignTab />}
-        {tab === 'clean' && <CleanRecordsTab />}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <Head>
-        <title>Stretch N Motion Members</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
-      </Head>
-      <div style={S.app}>
-        {/* Sidebar */}
-        <div style={S.sidebar}>
-          <div style={S.logo}>
-            <div style={{ background: '#fff', borderRadius: 6, padding: '8px 12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-              <div style={S.logoName}>STRETCH N<br/>MOTION</div>
-              <div style={S.logoSub}>MOBILITY STUDIO · MEMBERS</div>
-            </div>
-          </div>
-          <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #e5e5e5', position: 'relative' }} ref={searchRef}>
-            <div style={{ position: 'relative' }}>
-              <i className="ti ti-search" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#999' }} />
-              <input value={search} onChange={e => handleSearch(e.target.value)} onFocus={() => search && setShowSearchDrop(searchResults.length > 0)} placeholder="Search members…" style={{ ...S.input, paddingLeft: 28, fontSize: 12, background: '#f5f5f5', border: '0.5px solid #e0e0e0' }} />
-            </div>
-            {showSearchDrop && (
-              <div style={S.searchDrop}>
-                {searchResults.map(m => (
-                  <div key={String(m._id)} style={S.searchItem} onClick={() => { viewMember(m, 'members'); setShowSearchDrop(false); setSearch(''); }}>
-                    <div style={{ ...S.avatar, width: 24, height: 24, fontSize: 9, flexShrink: 0 }}>{ini(m)}</div>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 500 }}>{fullName(m)}</div>
-                      <div style={{ fontSize: 10, color: '#888' }}>{m.pkg || 'No package'}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', paddingTop: 6 }}>
-            {[
-              { id: 'dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
-              { id: 'members', icon: 'ti-users', label: 'Members' },
-              { id: 'flags', icon: 'ti-flag', label: 'Flags', badge: openFlagCount },
-              { id: 'packages', icon: 'ti-package', label: 'Packages' },
-            ].map(item => (
-              <div key={item.id} style={{ ...S.navItem, ...(page === item.id || (page === 'detail' && detailBack === item.id) ? S.navItemActive : {}) }} onClick={() => nav(item.id)}>
-                <i className={`ti ${item.icon}`} style={{ fontSize: 15 }} /><span>{item.label}</span>
-                {item.badge > 0 && <span style={S.navBadge}>{item.badge}</span>}
-              </div>
-            ))}
-            <div style={S.navSection}>Tools</div>
-            <div style={{ ...S.navItem, ...(page === 'cleanup' ? S.navItemActive : {}), ...(unassignedCount > 0 ? { color: '#1B8DB3' } : {}) }} onClick={() => nav('cleanup')}>
-              <i className="ti ti-shield-check" style={{ fontSize: 15 }} /><span>Admin Master 🏆</span>
-              {unassignedCount > 0 && <span style={{ ...S.navBadge, background: '#EBF6FB', color: '#1B8DB3' }}>{unassignedCount}</span>}
-            </div>
-            <div style={{ ...S.navItem, ...(page === 'addmember' ? S.navItemActive : {}) }} onClick={() => nav('addmember')}>
-              <i className="ti ti-user-plus" style={{ fontSize: 15 }} /><span>Add member</span>
-            </div>
-            <div style={{ ...S.navItem }} onClick={() => fileRef.current.click()}>
-              <i className="ti ti-upload" style={{ fontSize: 15 }} /><span>Import CSV</span>
-              <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSV} />
-            </div>
-            {importMsg && <div style={{ fontSize: 11, color: '#1B8DB3', padding: '4px 18px 8px', lineHeight: 1.4 }}>{importMsg}</div>}
-          </div>
-          <div style={S.sidebarFooter}>
-            <div style={{ fontSize: 10, color: '#aaa' }}>Logged in as</div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2, color: '#555' }}>Staff admin</div>
-          </div>
-        </div>
-
-        {/* Main */}
-        <div style={S.main}>
-          {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888', fontSize: 14 }}>
-              <i className="ti ti-loader" style={{ fontSize: 20, marginRight: 8 }} /> Loading…
-            </div>
-          ) : (
-            <>
-              {/* Dashboard */}
-              {page === 'dashboard' && (
-                <div>
-                  <div style={S.pageHeader}>
-                    <div>
-                      <div style={S.pageTitle}>Dashboard</div>
-                      <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
-                    </div>
-                  </div>
-
-                  {/* Top metrics */}
-                  <div style={S.metrics}>
-                    {[
-                      { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
-                      { label: 'Open Flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#A32D2D' : '#0F6E56', icon: 'ti-flag', bg: openFlagCount > 0 ? 'linear-gradient(135deg, #FFF0F0, #FCEBEB)' : 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
-                      { label: 'Expiring Soon', value: expiringCount, sub: 'Within 14 days', color: expiringCount > 0 ? '#854F0B' : '#888', icon: 'ti-clock', bg: expiringCount > 0 ? 'linear-gradient(135deg, #FFFBEB, #FAEEDA)' : 'linear-gradient(135deg, #F8F8F8, #F0F0F0)' },
-                      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: 'Active members only', color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
-                    ].map((m, i) => (
-                      <div key={i} style={{ background: m.bg, borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                          <div style={{ fontSize: 11, color: m.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{m.label}</div>
-                          <i className={`ti ${m.icon}`} style={{ fontSize: 16, color: m.color, opacity: 0.6 }} />
-                        </div>
-                        <div style={{ fontSize: 28, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
-                        <div style={{ fontSize: 11, color: m.color, opacity: 0.7, marginTop: 4 }}>{m.sub}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Membership tier breakdown */}
-                  <div style={{ ...S.card, marginBottom: 16 }}>
-                    <div style={S.cardTitle}>
-                      <i className="ti ti-chart-bar" style={{ fontSize: 13, marginRight: 6, color: '#1B8DB3' }} />
-                      Membership Tiers
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {packages.filter(p => p.sessions > 1).map((p, i) => {
-                        const count = activeMembers.filter(m => m.pkg === p.name).length;
-                        const maxCount = Math.max(...packages.filter(pk => pk.sessions > 1).map(pk => activeMembers.filter(m => m.pkg === pk.name).length), 1);
-                        const barPct = Math.round((count / maxCount) * 100);
-                        const tierRevenue = count * p.price;
-                        return (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{ width: 160, fontSize: 12, fontWeight: 600, color: '#444', flexShrink: 0 }}>{p.name}</div>
-                            <div style={{ flex: 1, height: 8, background: '#F0F4F7', borderRadius: 4, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${barPct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 4, transition: 'width 0.6s ease' }} />
-                            </div>
-                            <div style={{ width: 32, fontSize: 13, fontWeight: 800, color: '#1B8DB3', textAlign: 'right', flexShrink: 0 }}>{count}</div>
-                            <div style={{ width: 72, fontSize: 11, color: '#888', textAlign: 'right', flexShrink: 0 }}>${tierRevenue.toLocaleString()}/mo</div>
-                            <button onClick={() => { setMemberFilter('active'); setPkgFilter(p.name); nav('members'); }} style={{ fontSize: 10, color: '#1B8DB3', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>view</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Drew nudge */}
-                  {unassignedCount > 0 && (
-                    <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', border: '1px solid #B5D4E4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: '#1B8DB3' }}>🧹 {unassignedCount} members need review</div>
-                        <div style={{ fontSize: 12, color: '#5A9AB5', marginTop: 2 }}>Admin Master, time to earn that title.</div>
-                      </div>
-                      <button onClick={() => nav('cleanup')} style={{ ...S.btnPrimary, fontSize: 13, padding: '8px 16px' }}>Start Cleanup →</button>
-                    </div>
-                  )}
-
-                  <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
-                  <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
-                  {openFlagCount === 0 && <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>}
-                </div>
-              )}
-
-              {/* Members */}
-              {page === 'members' && (
-                <div>
-                  <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>Members <span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>({filteredMembers.length})</span></div>
-                    <button style={S.btnPrimary} onClick={() => nav('addmember')}><i className="ti ti-user-plus" />Add member</button>
-                  </div>
-
-                  {/* Status filter */}
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-                    {[
-                      { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
-                      { key: 'paused', label: `Paused (${members.filter(m => m.status === 'paused').length})` },
-                      { key: 'expiring', label: `Expiring (${members.filter(m => m.status === 'expiring').length})` },
-                      { key: 'all', label: `All (${members.length})` },
-                    ].map(f => (
-                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s', background: memberFilter === f.key ? '#1B8DB3' : '#fff', color: memberFilter === f.key ? '#fff' : '#666', border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd', boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none' }}>{f.label}</button>
-                    ))}
-                  </div>
-
-                  {/* Package tier filter */}
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                    <button onClick={() => setPkgFilter('all')} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === 'all' ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === 'all' ? '#fff' : '#666', border: 'none' }}>All tiers</button>
-                    {packages.filter(p => p.sessions > 1).map((p, i) => (
-                      <button key={i} onClick={() => setPkgFilter(p.name)} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === p.name ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === p.name ? '#fff' : '#666', border: 'none' }}>{p.name}</button>
-                    ))}
-                    <button onClick={() => setPkgFilter('none')} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === 'none' ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === 'none' ? '#fff' : '#666', border: 'none' }}>No package</button>
-                  </div>
-
-                  <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-                    <table style={S.table}>
-                      <thead>
-                        <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
-                          <th style={{ ...S.th, width: '22%' }}>Member</th>
-                          <th style={{ ...S.th, width: '26%' }}>Package</th>
-                          <th style={{ ...S.th, width: '12%' }}>Status</th>
-                          <th style={{ ...S.th, width: '12%' }}>Flags</th>
-                          <th style={{ ...S.th, width: '16%' }}>Last Visit</th>
-                          <th style={{ ...S.th, width: '12%' }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMembers.length === 0 ? (
-                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', fontSize: 13, color: '#aaa' }}>No members in this category.</td></tr>
-                        ) : filteredMembers.map(m => {
-                          const mf = memberFlags(m._id);
-                          const hasCardFlag = mf.some(f => f.reason === 'card');
-                          return (
-                            <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0', background: hasCardFlag ? '#FFF8F8' : 'transparent' }}>
-                              <td style={S.td}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                                  <div style={{ ...S.avatar, ...(hasCardFlag ? { background: '#FCEBEB', color: '#A32D2D' } : {}) }}>{ini(m)}</div>
-                                  <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName(m)}</div>
-                                    <div style={{ fontSize: 10, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.email}</div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td style={{ ...S.td, fontSize: 12 }}>
-                                {m.pkg ? (
-                                  <span style={{ background: '#EBF6FB', color: '#1B8DB3', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{m.pkg}</span>
-                                ) : <span style={{ color: '#ccc', fontSize: 11 }}>No package</span>}
-                              </td>
-                              <td style={S.td}><StatusBadge status={m.status} /></td>
-                              <td style={S.td}>{mf.length > 0 ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}</div> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
-                              <td style={{ ...S.td, fontSize: 11, color: m.daysSinceLastAppt > 90 ? '#A32D2D' : '#666' }}>
-                                {m.daysSinceLastAppt != null ? `${m.daysSinceLastAppt}d ago` : '—'}
-                              </td>
-                              <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'members')}>View →</span></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Flags */}
-              {page === 'flags' && (
-                <div>
-                  <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>Flags</div>
-                    <button style={S.btn} onClick={() => { setFlagForm({ memberId: members[0]?._id || '', reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-plus" />Add flag</button>
-                  </div>
-                  <div style={S.tabs}>
-                    {['open', 'resolved'].map(t => (
-                      <div key={t} style={{ ...S.tab, ...(flagTab === t ? S.tabActive : {}) }} onClick={() => setFlagTab(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</div>
-                    ))}
-                  </div>
-                  {flagTab === 'open' && (
-                    <>
-                      <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
-                      <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
-                      {openFlagCount === 0 && <div style={S.card}><div style={S.empty}>No open flags — all clear 🎉</div></div>}
-                    </>
-                  )}
-                  {flagTab === 'resolved' && (
-                    <div style={S.card}>
-                      {flags.filter(f => f.resolved).length === 0 ? <div style={S.empty}>No resolved flags yet.</div> : flags.filter(f => f.resolved).map(f => {
-                        const m = members.find(x => String(x._id) === String(f.memberId)); if (!m) return null;
-                        return (
-                          <div key={String(f._id)} style={{ ...S.flagRow, opacity: 0.6 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={S.avatar}>{ini(m)}</div>
-                              <div>
-                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} /><span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span></div>
-                                <div style={{ fontSize: 11, color: '#888' }}>Flagged {f.date}</div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Packages */}
-              {page === 'packages' && (
-                <div>
-                  <div style={S.pageHeader}>
-                    <div style={S.pageTitle}>Packages</div>
-                    <button style={S.btnPrimary} onClick={() => setShowPkgModal(true)}><i className="ti ti-plus" />New package</button>
-                  </div>
-                  {packages.map((p, i) => {
-                    const count = activeMembers.filter(m => m.pkg === p.name).length;
-                    return (
-                      <div key={i} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{p.sessions ? `${p.sessions} × 25-min sessions/mo` : 'Single session'} · {p.notes}</div>
-                          {count > 0 && <div style={{ fontSize: 11, color: '#1B8DB3', marginTop: 4, fontWeight: 600 }}>{count} active member{count !== 1 ? 's' : ''}</div>}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: '#1B8DB3' }}>${p.price}<span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{p.sessions > 1 ? '/mo' : ''}</span></div>
-                          <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => setPackages(prev => prev.filter((_, j) => j !== i))}><i className="ti ti-trash" /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Member Cleanup */}
-              {page === 'cleanup' && <DrewMode />}
-
-              {/* Add Member */}
-              {page === 'addmember' && (
-                <div>
-                  <div style={S.pageHeader}><div style={S.pageTitle}>Add New Member</div></div>
-                  <div style={{ ...S.card, maxWidth: 520 }}>
-                    <div style={S.formRow}>
-                      <div style={S.formGroup}><label style={S.label}>First name</label><input style={S.input} value={newMember.firstName} onChange={e => setNewMember(p => ({ ...p, firstName: e.target.value }))} placeholder="Sarah" /></div>
-                      <div style={S.formGroup}><label style={S.label}>Last name</label><input style={S.input} value={newMember.lastName} onChange={e => setNewMember(p => ({ ...p, lastName: e.target.value }))} placeholder="Miller" /></div>
-                    </div>
-                    <div style={S.formGroup}><label style={S.label}>Email</label><input style={S.input} type="email" value={newMember.email} onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))} placeholder="sarah@email.com" /></div>
-                    <div style={S.formGroup}><label style={S.label}>Phone</label><input style={S.input} value={newMember.phone} onChange={e => setNewMember(p => ({ ...p, phone: e.target.value }))} placeholder="(617) 555-0100" /></div>
-                    <div style={S.formRow}>
-                      <div style={S.formGroup}><label style={S.label}>Package</label>
-                        <select style={S.input} value={newMember.pkg} onChange={e => setNewMember(p => ({ ...p, pkg: e.target.value }))}>
-                          <option value="">Select…</option>
-                          {packages.map((p, i) => <option key={i} value={p.name}>{p.name} — ${p.price}</option>)}
-                        </select>
-                      </div>
-                      <div style={S.formGroup}><label style={S.label}>Start date</label><input style={S.input} type="date" value={newMember.start} onChange={e => setNewMember(p => ({ ...p, start: e.target.value }))} /></div>
-                    </div>
-                    <div style={S.formGroup}><label style={S.label}>Card on file (last 4)</label><input style={S.input} maxLength={4} value={newMember.card} onChange={e => setNewMember(p => ({ ...p, card: e.target.value }))} placeholder="4242" /></div>
-                    <div style={S.formGroup}><label style={S.label}>Notes</label><textarea style={{ ...S.input, resize: 'vertical' }} rows={2} value={newMember.notes} onChange={e => setNewMember(p => ({ ...p, notes: e.target.value }))} placeholder="Health notes, goals, preferences…" /></div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button style={S.btnPrimary} onClick={addMember}><i className="ti ti-check" />Save member</button>
-                      <button style={S.btn} onClick={() => nav('members')}>Cancel</button>
-                    </div>
-                    {nmSuccess && <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginTop: 12 }}>✓ Member added successfully!</div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Member Detail */}
-              {page === 'detail' && detailMember && <MemberDetail
-                member={members.find(x => String(x._id) === String(detailMember._id)) || detailMember}
-                members={members}
-                packages={packages}
-                flags={flags}
-                nav={nav}
-                detailBack={detailBack}
-                updateMember={updateMember}
-                removeMember={removeMember}
-                resolveFlag={resolveFlag}
-                setFlagForm={setFlagForm}
-                setShowFlagModal={setShowFlagModal}
-                styles={S}
-              />}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Flag Modal */}
-      {showFlagModal && (
-        <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowFlagModal(false); }}>
-          <div style={S.modal}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Add Flag</div>
-              <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowFlagModal(false)}><i className="ti ti-x" /></button>
-            </div>
-            <div style={S.formGroup}><label style={S.label}>Member</label>
-              <select style={S.input} value={flagForm.memberId} onChange={e => setFlagForm(p => ({ ...p, memberId: e.target.value }))}>
-                <option value="">Select…</option>
-                {members.map(m => <option key={String(m._id)} value={String(m._id)}>{fullName(m)}</option>)}
-              </select>
-            </div>
-            <div style={S.formGroup}><label style={S.label}>Reason</label>
-              <select style={S.input} value={flagForm.reason} onChange={e => setFlagForm(p => ({ ...p, reason: e.target.value }))}>
-                <option value="card">Card declined</option>
-                <option value="expiring">Membership expiring</option>
-                <option value="inactive">Inactive — no bookings</option>
-                <option value="manual">Manual note</option>
-              </select>
-            </div>
-            <div style={S.formGroup}><label style={S.label}>Note (optional)</label>
-              <input style={S.input} value={flagForm.note} onChange={e => setFlagForm(p => ({ ...p, note: e.target.value }))} placeholder="Add context…" />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={S.btnPrimary} onClick={addFlag}><i className="ti ti-flag" />Save flag</button>
-              <button style={S.btn} onClick={() => setShowFlagModal(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Package Modal */}
-      {showPkgModal && (
-        <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowPkgModal(false); }}>
-          <div style={S.modal}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>New Package</div>
-              <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowPkgModal(false)}><i className="ti ti-x" /></button>
-            </div>
-            <div style={S.formRow}>
-              <div style={S.formGroup}><label style={S.label}>Name</label><input style={S.input} value={pkgForm.name} onChange={e => setPkgForm(p => ({ ...p, name: e.target.value }))} placeholder="4x/month" /></div>
-              <div style={S.formGroup}><label style={S.label}>Price ($)</label><input style={S.input} type="number" value={pkgForm.price} onChange={e => setPkgForm(p => ({ ...p, price: e.target.value }))} placeholder="170" /></div>
-            </div>
-            <div style={S.formRow}>
-              <div style={S.formGroup}><label style={S.label}>Sessions/mo</label><input style={S.input} type="number" value={pkgForm.sessions} onChange={e => setPkgForm(p => ({ ...p, sessions: e.target.value }))} placeholder="4" /></div>
-              <div style={S.formGroup}><label style={S.label}>Type</label>
-                <select style={S.input} value={pkgForm.type} onChange={e => setPkgForm(p => ({ ...p, type: e.target.value }))}>
-                  <option>Stretch therapy</option><option>Massage therapy</option><option>Combo</option>
-                </select>
-              </div>
-            </div>
-            <div style={S.formGroup}><label style={S.label}>Notes</label><input style={S.input} value={pkgForm.notes} onChange={e => setPkgForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. First responder rate" /></div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={S.btnPrimary} onClick={addPackage}><i className="ti ti-check" />Save</button>
-              <button style={S.btn} onClick={() => setShowPkgModal(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function MemberDetail({ member, members, packages, flags, nav, detailBack, updateMember, removeMember, resolveFlag, setFlagForm, setShowFlagModal, styles: S }) {
-  const [editingPkg, setEditingPkg] = useState(false);
-  const [newPkg, setNewPkg] = useState(member.pkg || '');
-
-  const m = member;
-  const mf = flags.filter(f => !f.resolved && String(f.memberId) === String(m._id));
-  const pkg = packages.find(p => p.name === m.pkg);
-
-  async function savePkg() {
-    await updateMember(m, { pkg: newPkg, status: newPkg ? 'active' : m.status });
-    setEditingPkg(false);
-  }
-
-  return (
-    <div>
-      <div style={{ marginBottom: 16 }}>
-        <button style={S.btnSm} onClick={() => nav(detailBack)}><i className="ti ti-arrow-left" />Back</button>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0' }}>
-        <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>
-          {((m.firstName||'?')[0] + (m.lastName||'?')[0]).toUpperCase()}
-        </div>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{m.firstName} {m.lastName}</div>
-          <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.email} · {m.phone}</div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            <StatusBadge status={m.status} />
-            {mf.map((f, i) => <FlagPill key={i} reason={f.reason} />)}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-        <div style={S.card}>
-          <div style={S.cardTitle}>Membership</div>
-          <div style={{ ...S.detailRow, alignItems: 'center' }}>
-            <span style={{ color: '#888' }}>Package</span>
-            {editingPkg ? (
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <select value={newPkg} onChange={e => setNewPkg(e.target.value)} style={{ ...S.input, fontSize: 12, padding: '4px 8px', width: 'auto' }}>
-                  <option value="">No package</option>
-                  {packages.map((p, i) => <option key={i} value={p.name}>{p.name}</option>)}
-                </select>
-                <button onClick={savePkg} style={{ ...S.btnSm, background: '#1B8DB3', color: '#fff', border: 'none' }}>Save</button>
-                <button onClick={() => setEditingPkg(false)} style={S.btnSm}>✕</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontWeight: 600 }}>{m.pkg || '—'}</span>
-                <button onClick={() => setEditingPkg(true)} style={{ ...S.btnSm, fontSize: 10, padding: '2px 7px', color: '#1B8DB3', borderColor: '#B5D4E4' }}>Change</button>
-              </div>
-            )}
-          </div>
-          {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Sessions</span><span>{pkg.sessions} × 25 min/mo</span></div>}
-          {pkg && <div style={S.detailRow}><span style={{ color: '#888' }}>Rate</span><span style={{ fontWeight: 600, color: '#1B8DB3' }}>${pkg.price}/mo</span></div>}
-          <div style={S.detailRow}><span style={{ color: '#888' }}>Next billing</span><span>{m.billing || '—'}</span></div>
-          <div style={S.detailRow}><span style={{ color: '#888' }}>Card on file</span><span>···· {m.card || '????'}</span></div>
-          {m.daysSinceLastAppt != null && <div style={S.detailRow}><span style={{ color: '#888' }}>Last visit</span><span style={{ color: m.daysSinceLastAppt > 90 ? '#A32D2D' : '#444' }}>{m.daysSinceLastAppt}d ago</span></div>}
-        </div>
-
-        <div style={S.card}>
-          <div style={S.cardTitle}>Notes & Flags</div>
-          <div style={{ fontSize: 12, color: '#666', lineHeight: 1.7, marginBottom: 12 }}>{m.notes || 'No notes on file.'}</div>
-          {mf.length > 0 ? mf.map(f => (
-            <div key={String(f._id)} style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <FlagPill reason={f.reason} />
-                <span style={{ color: '#1D9E75', cursor: 'pointer', fontSize: 11 }} onClick={() => resolveFlag(f)}>Resolve</span>
-              </div>
-              {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: '#666', marginTop: 4 }}>{f.note}</div>}
-            </div>
-          )) : <div style={{ fontSize: 11, color: '#aaa' }}>No open flags.</div>}
-          <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}>
-            <i className="ti ti-flag" />Add flag
-          </button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button style={S.btnSm} onClick={() => updateMember(m, { status: 'active' })}><i className="ti ti-check" />Mark active</button>
-        <button style={S.btnSm} onClick={() => updateMember(m, { status: 'paused' })}><i className="ti ti-pause" />Pause</button>
-        <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => removeMember(m)}><i className="ti ti-trash" />Remove</button>
+        <div class="welcome-name" id="nm-welcome-name">Single Session Booking</div>
+        <div class="welcome-sub">Assisted stretch & bodywork session</div>
       </div>
     </div>
-  );
+
+    <div class="step-bar">
+      <div class="step active" id="nm-s1"><div class="step-n">1</div><span>Details</span></div>
+      <div class="step" id="nm-s2"><div class="step-n">2</div><span>Therapist</span></div>
+      <div class="step" id="nm-s3"><div class="step-n">3</div><span>Date & Time</span></div>
+      <div class="step" id="nm-s4"><div class="step-n">4</div><span>Confirm</span></div>
+    </div>
+
+    <div class="page active" id="nm-page1">
+      <div class="notice amber"><span class="notice-icon">&#9888;</span><span>24-hour cancellation notice required. Late cancellations are non-refundable.</span></div>
+      <div class="sec-label">Your details</div>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">First name</label><input class="form-input" type="text" id="nm-first" placeholder="First name"></div>
+          <div class="form-group"><label class="form-label">Last name</label><input class="form-input" type="text" id="nm-last" placeholder="Last name"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="nm-email" placeholder="your@email.com"></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" type="tel" id="nm-phone" placeholder="(555) 000-0000"></div>
+      </div>
+      <div class="error-msg" id="nm-error1">Please fill in all fields.</div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="document.getElementById('nonmember').style.display='none';document.getElementById('gate').style.display='block'">Back</button>
+        <button class="btn-p" onclick="nmGoTo(2)">Continue</button>
+      </div>
+    </div>
+
+    <div class="page" id="nm-page2">
+      <div class="sec-label">Your location</div>
+      <div class="loc-row">
+        <button class="loc-btn" id="nm-loc-braintree" onclick="nmSelectLocation(this,'braintree')"><div class="loc-name">Braintree</div><div class="loc-addr">89 Hancock St, Suite 101</div></button>
+        <button class="loc-btn" id="nm-loc-weymouth" onclick="nmSelectLocation(this,'weymouth')"><div class="loc-name">Weymouth</div><div class="loc-addr">174 Middle Street</div></button>
+      </div>
+      <div id="nm-therapist-section" style="display:none">
+        <div class="sec-label">Choose a therapist</div>
+        <div class="hint"><div class="hint-dot"></div><span id="nm-hint-text">Select 1 therapist for your 50-min session.</span></div>
+        <button class="any-avail-btn" id="nm-any-avail-btn" onclick="nmSelectAnyAvailable()">
+          <div class="any-avail-name">⚡ Any Available</div>
+          <div class="any-avail-sub">First available therapist at this location</div>
+        </button>
+        <div class="t-grid" id="nm-t-grid"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="nmGoTo(1)">Back</button>
+        <button class="btn-p" id="nm-btn2" disabled onclick="nmGoTo(3)">Continue</button>
+      </div>
+    </div>
+
+    <div class="page" id="nm-page3">
+      <div class="sec-label">Pick a date</div>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="nmPrevMonth()">&#8592; Prev</button>
+        <div class="cal-month" id="nm-cal-month"></div>
+        <button class="cal-nav-btn" onclick="nmNextMonth()">Next &#8594;</button>
+      </div>
+      <div class="date-grid" id="nm-date-grid"></div>
+      <div id="nm-time-section" style="display:none">
+        <div class="sec-label">Available times</div>
+        <div id="nm-time-container"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="nmGoTo(2)">Back</button>
+        <button class="btn-p" id="nm-btn3" disabled onclick="nmGoTo(4)">Continue</button>
+      </div>
+    </div>
+
+    <div class="page" id="nm-page4">
+      <div class="notice amber"><span class="notice-icon">&#9888;</span><span>24-hour cancellation required. Late cancellations are non-refundable. Payment is collected in studio.</span></div>
+      <div class="sec-label">Booking summary</div>
+      <div class="card" id="nm-summary"></div>
+      <div class="consent-box">
+        <p>I consent to participate in assisted stretching/massage therapy with Stretch N Motion for improving flexibility, relaxation, and muscular tension relief. I understand this is not a substitute for medical treatment. I agree to hold harmless Stretch N Motion and its staff from any claims arising from this program.</p>
+        <div class="checkbox-row"><input type="checkbox" id="nm-consent1"><label for="nm-consent1">I have read and agree to the consent terms</label></div>
+      </div>
+      <div class="consent-box">
+        <p>Cancellations require 24 hours notice. Late cancellations and no-shows are non-refundable. Payment of $95 is due in studio at time of session.</p>
+        <div class="checkbox-row"><input type="checkbox" id="nm-consent2"><label for="nm-consent2">I understand the cancellation and payment policy</label></div>
+      </div>
+      <div class="error-msg" id="nm-error4">Please agree to both policies before confirming.</div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="nmGoTo(3)">Back</button>
+        <button class="btn-p" id="nm-btn4" onclick="nmSubmit()">Confirm booking</button>
+      </div>
+    </div>
+
+    <div class="page" id="nm-page5">
+      <div class="success-wrap">
+        <div class="success-icon"><svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M6 14L11 19L22 8" stroke="#7de8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="success-title">You're booked!</div>
+        <div class="success-sub" id="nm-success-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="welcome-banner">
+      <div>
+        <div class="welcome-name" id="welcome-name"></div>
+        <div class="welcome-sub" id="welcome-sub">Active member · booking portal</div>
+      </div>
+      <div class="session-pill" id="session-pill"></div>
+    </div>
+
+    <div class="step-bar">
+      <div class="step active" id="s1"><div class="step-n">1</div><span>Therapists</span></div>
+      <div class="step" id="s2"><div class="step-n">2</div><span>Session</span></div>
+      <div class="step" id="s3"><div class="step-n">3</div><span>Date & Time</span></div>
+      <div class="step" id="s4"><div class="step-n">4</div><span>Confirm</span></div>
+    </div>
+
+    <!-- PAGE 1 -->
+    <div class="page active" id="page1">
+      <div class="notice amber"><span class="notice-icon">&#9888;</span><span>A card on file is required for all bookings. No-shows are subject to automatic charge. 12-hour cancellation notice required.</span></div>
+      <div class="sec-label">Your location</div>
+      <div class="loc-row">
+        <button class="loc-btn" onclick="selectLocation(this,'braintree')"><div class="loc-name">Braintree</div><div class="loc-addr">89 Hancock St, Suite 101</div></button>
+        <button class="loc-btn" onclick="selectLocation(this,'weymouth')"><div class="loc-name">Weymouth</div><div class="loc-addr">174 Middle Street</div></button>
+      </div>
+      <div id="therapist-section" style="display:none">
+        <div class="sec-label">Choose up to 3 therapists</div>
+        <div class="hint"><div class="hint-dot"></div><span id="hint-text">Select 1, 2, or 3 therapists. The system finds the best available back-to-back slots.</span></div>
+        <button class="any-avail-btn" id="any-avail-btn" onclick="selectAnyAvailable()">
+          <div class="any-avail-name">⚡ Any Available</div>
+          <div class="any-avail-sub">First available therapist at this location</div>
+        </button>
+        <div class="t-grid" id="t-grid"></div>
+        <div class="sec-label">Your selection</div>
+        <div class="sel-bar">
+          <div class="sel-slot" id="slot1"><div class="sel-lbl">First</div><div class="sel-empty">Not selected</div></div>
+          <div class="sel-div"></div>
+          <div class="sel-slot" id="slot2"><div class="sel-lbl">Second</div><div class="sel-empty">Optional</div></div>
+          <div class="sel-div"></div>
+          <div class="sel-slot" id="slot3"><div class="sel-lbl">Third</div><div class="sel-empty">Optional</div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-s" onclick="resetLocation()">Back</button>
+          <button class="btn-p" id="btn1" disabled onclick="goTo(2)">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2 -->
+    <div class="page" id="page2">
+      <div class="sec-label">Session length</div>
+      <div id="over-limit-notice" style="display:none" class="notice amber">
+        <span class="notice-icon">&#9888;</span>
+        <span id="over-limit-text"></span>
+      </div>
+      <div class="notice amber" id="addon-info" style="display:none"><span class="notice-icon">&#9888;</span><span>Add-on time beyond your standard session is billed separately by staff after your visit.</span></div>
+      <div class="dur-grid">
+        <button class="dur-btn" onclick="selectDuration(this,25,1)"><div class="dur-min">25</div><div class="dur-label">minutes</div><div class="dur-tag tag-std">1 slot</div></button>
+        <button class="dur-btn" onclick="selectDuration(this,50,2)"><div class="dur-min">50</div><div class="dur-label">minutes</div><div class="dur-tag tag-std">Standard · 2 slots</div></button>
+        <button class="dur-btn" onclick="selectDuration(this,75,3)"><div class="dur-min">75</div><div class="dur-label">minutes</div><div class="dur-tag tag-addon">+25 · 3 slots</div></button>
+        <button class="dur-btn" onclick="selectDuration(this,100,4)"><div class="dur-min">100</div><div class="dur-label">minutes</div><div class="dur-tag tag-addon">+50 · 4 slots</div></button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-s" onclick="goTo(1)">Back</button>
+        <button class="btn-p" id="btn2" disabled onclick="goTo(3)">Continue</button>
+      </div>
+    </div>
+
+    <!-- PAGE 3 -->
+    <div class="page" id="page3">
+      <div class="sec-label">Pick a date</div>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="prevMonth()">&#8592; Prev</button>
+        <div class="cal-month" id="cal-month"></div>
+        <button class="cal-nav-btn" onclick="nextMonth()">Next &#8594;</button>
+      </div>
+      <div class="date-grid" id="date-grid"></div>
+      <div id="time-section" style="display:none">
+        <div class="sec-label" id="time-label">Available times</div>
+        <div id="time-container"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="goTo(2)">Back</button>
+        <button class="btn-p" id="btn3" disabled onclick="goTo(4)">Continue</button>
+      </div>
+    </div>
+
+    <!-- PAGE 4 -->
+    <div class="page" id="page4">
+      <div class="sec-label">Your details</div>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">First name</label><input class="form-input" type="text" id="f-first" readonly></div>
+          <div class="form-group"><label class="form-label">Last name</label><input class="form-input" type="text" id="f-last" readonly></div>
+        </div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="f-email" readonly></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" type="tel" id="f-phone" readonly></div>
+      </div>
+      <div id="billing-notice" style="display:none" class="notice amber">
+        <span class="notice-icon">&#9888;</span>
+        <span id="billing-notice-text"></span>
+      </div>
+      <div class="notice amber"><span class="notice-icon">&#9888;</span><span>A card on file is required. No-shows will be automatically charged. 12-hour cancellation notice required.</span></div>
+      <div class="sec-label">Booking summary</div>
+      <div class="card" id="summary"></div>
+      <div class="consent-box">
+        <p>I consent to participate in assisted stretching/massage therapy with Stretch N Motion for improving flexibility, relaxation, and muscular tension relief. I understand this is not a substitute for medical treatment. I agree to hold harmless Stretch N Motion and its staff from any claims arising from this program.</p>
+        <div class="checkbox-row"><input type="checkbox" id="consent1"><label for="consent1">I have read and agree to the consent terms</label></div>
+      </div>
+      <div class="consent-box">
+        <p>A 12-hour notice is required to cancel. No-shows will be charged as a full session. Late arrival may result in a shortened session. Repeated no-shows or non-payment of add-ons may result in restricted booking access.</p>
+        <div class="checkbox-row"><input type="checkbox" id="consent2"><label for="consent2">I understand and agree to the cancellation and payment policy</label></div>
+      </div>
+      <div id="over-consent-box" style="display:none" class="consent-box" style="border-color:var(--amber-border)">
+        <p style="color:var(--amber)">This session exceeds your monthly membership limit. Staff will process an additional session charge to your card on file after your visit.</p>
+        <div class="checkbox-row"><input type="checkbox" id="consent3"><label for="consent3">I understand this session will be billed as an over-limit add-on by staff after my visit</label></div>
+      </div>
+      <div class="error-msg" id="error-msg">Please agree to all policies before confirming.</div>
+      <div class="btn-row">
+        <button class="btn-s" onclick="goTo(3)">Back</button>
+        <button class="btn-p" id="btn4" onclick="submitBooking()">Confirm booking</button>
+      </div>
+    </div>
+
+    <!-- PAGE 5 -->
+    <div class="page" id="page5">
+      <div class="success-wrap">
+        <div class="success-icon"><svg width="26" height="26" viewBox="0 0 28 28" fill="none"><path d="M6 14L11 19L22 8" stroke="#7de8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="success-title">You're booked!</div>
+        <div class="success-sub" id="success-msg"></div>
+        <button class="btn-p" onclick="resetAndBookAgain()" style="max-width:240px;margin:1.5rem auto 0;display:block">Book another session</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROXY = 'https://snm-booking-api.vercel.app';
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+const MEMBERSHIP_TYPES = { '4x': 43687655, '8x': 43688103, '16x': 43688572 };
+const MEMBERSHIP_LIMITS = { '4x': 4, '8x': 8, '16x': 16 };
+const OVERLIMIT_RATES = { '4x': 50, '8x': 45, '16x': 40 };
+
+const THERAPISTS = {
+  braintree: [
+    { id: 8503778,  name: "Andrew Kelly",    spec: "Lead Stretch · Lower Body & Scapular",          initials: "AK", bg: "#1a2e2f", fg: "#7de8ef" },
+    { id: 8164771,  name: "Charles Lunney",  spec: "Lead Massage · Sports Injury & Cervical Spine", initials: "CL", bg: "#2e2a1a", fg: "#f0d4a8" },
+
+    { id: 12173480, name: "Drew O'Leary",    spec: "Legs & Lower Back Specialist",                  initials: "DO", bg: "#2a1a3a", fg: "#c4a8f0" },
+    { id: 8884184,  name: "Maria Colantoni", spec: "Massage Therapist · Neck & Shoulder",           initials: "MC", bg: "#3a1a1a", fg: "#f0a8a8" },
+    { id: 12211897, name: "Tricia Hayes",    spec: "Assisted Stretch · Shoulder Mobility",          initials: "TH", bg: "#1a2e3a", fg: "#a8d4f0" },
+    { id: 14156763, name: "Jodany Pierre",   spec: "Assisted Stretch Therapist",                   initials: "JP", bg: "#2a1a2e", fg: "#d4a8f0" },
+  ],
+  weymouth: [
+    { id: 12293959, name: "Tricia Hayes",    spec: "Assisted Stretch · Shoulder Mobility",          initials: "TH", bg: "#1a2e3a", fg: "#a8d4f0" },
+    { id: 12172902, name: "Maria Colantoni", spec: "Lead Massage · Neck & Shoulder",                initials: "MC", bg: "#3a1a1a", fg: "#f0a8a8" },
+    { id: 11000889, name: "Drew O'Leary",    spec: "Assisted Stretch · Legs & Lower Back",          initials: "DO", bg: "#2a1a3a", fg: "#c4a8f0" },
+    { id: 12824261, name: "Charles Lunney",  spec: "Sports Massage Therapist",                      initials: "CL", bg: "#2e2a1a", fg: "#f0d4a8" },
+
+    { id: 14128727, name: "Jodany Pierre",   spec: "Assisted Stretch Therapist",                   initials: "JP", bg: "#1a2e3a", fg: "#a8d4f0" },
+  ]
+};
+
+let client = null;
+let state = {
+  location: null, selected: [], anyAvailable: false, duration: null, numSlots: null,
+  addons: [], date: null, timeSlot: null,
+  calYear: new Date().getFullYear(), calMonth: new Date().getMonth(),
+  availableDates: [], timeSlots: [],
+  isOverLimit: false, bookingMonth: null
+};
+
+// ── Auth + Session Check ──────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(window.location.search);
+  const code = (params.get('code') || '').toUpperCase().trim();
+  if (!code) { document.getElementById('gate').style.display = 'block'; return; }
+  try {
+    const r = await fetch(`${PROXY}/api/clients?code=${code}`);
+    if (!r.ok) { document.getElementById('gate').style.display = 'block'; return; }
+    const c = await r.json();
+    if (!c.active) { document.getElementById('suspended').style.display = 'block'; return; }
+
+    // Guest/non-member flow
+    if (c.membership === 'guest') {
+      document.getElementById('nonmember').style.display = 'block';
+      // Pre-fill guest details
+      document.getElementById('nm-first').value = c.first;
+      document.getElementById('nm-last').value = c.last;
+      document.getElementById('nm-email').value = c.email;
+      document.getElementById('nm-phone').value = c.phone;
+      // Store guest client for use in booking
+      window.guestClient = c;
+      return;
+    }
+
+    // Member flow
+    client = c;
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('welcome-name').textContent = `Welcome back, ${c.first}!`;
+    document.getElementById('f-first').value = c.first;
+    document.getElementById('f-last').value = c.last;
+    document.getElementById('f-email').value = c.email;
+    document.getElementById('f-phone').value = c.phone;
+
+    // Show session status in welcome banner
+    const used = c.sessionsUsed || 0;
+    const limit = c.sessionsLimit || MEMBERSHIP_LIMITS[c.membership] || 4;
+    const remaining = Math.max(0, limit - used);
+    const pill = document.getElementById('session-pill');
+    const now = new Date();
+    const monthName = MONTHS_SHORT[now.getMonth()];
+    if (used >= limit) {
+      pill.textContent = `${monthName}: ${used}/${limit} — over limit`;
+      pill.classList.add('over');
+    } else {
+      pill.textContent = `${monthName}: ${remaining} session${remaining !== 1 ? 's' : ''} left`;
+    }
+  } catch(e) { document.getElementById('gate').style.display = 'block'; }
+});
+
+// ── Navigation ────────────────────────────────────────
+function api(endpoint, params = {}) {
+  const qs = new URLSearchParams({ endpoint, ...params }).toString();
+  return fetch(`${PROXY}/api/acuity?${qs}`).then(r => r.json());
 }
 
-const styles = {
-  app: { display: 'flex', height: '100vh', background: '#F4F7FA', fontFamily: 'system-ui, sans-serif', color: '#1a1a1a' },
-  sidebar: { width: 216, minWidth: 216, background: '#fff', borderRight: '1px solid #E8ECF0', display: 'flex', flexDirection: 'column', height: '100vh', boxShadow: '2px 0 8px rgba(0,0,0,0.04)' },
-  logo: { padding: '14px', borderBottom: '1px solid #1570A0', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)' },
-  logoName: { fontSize: 15, fontWeight: 900, fontStyle: 'italic', color: '#1B8DB3', textTransform: 'uppercase', letterSpacing: '-0.5px', lineHeight: 1.1 },
-  logoSub: { fontSize: 7, color: '#1B8DB3', marginTop: 3, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600 },
-  navItem: { display: 'flex', alignItems: 'center', gap: 9, padding: '9px 18px', fontSize: 13, cursor: 'pointer', color: '#666', borderLeft: '3px solid transparent', transition: 'all .12s' },
-  navItemActive: { background: 'linear-gradient(90deg, #EBF6FB, #F4FAFD)', color: '#1B8DB3', borderLeftColor: '#1B8DB3', fontWeight: 600 },
-  navBadge: { marginLeft: 'auto', background: '#FCEBEB', color: '#A32D2D', borderRadius: 10, fontSize: 10, padding: '1px 6px', fontWeight: 600 },
-  navSection: { fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: '#bbb', padding: '.75rem 18px .3rem', marginTop: '.25rem' },
-  sidebarFooter: { padding: '14px 18px', borderTop: '1px solid #E8ECF0' },
-  main: { flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' },
-  pageHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' },
-  pageTitle: { fontSize: 20, fontWeight: 800, color: '#1a1a1a' },
-  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: '1.25rem' },
-  card: { background: '#fff', border: '1px solid #E8ECF0', borderRadius: 12, padding: '16px 18px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' },
-  cardTitle: { fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center' },
-  flagRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid #f3f3f3' },
-  table: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' },
-  th: { textAlign: 'left', fontWeight: 700, fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: '.05em', padding: '10px 12px', borderBottom: '1px solid #E8ECF0' },
-  td: { padding: '10px 12px', verticalAlign: 'middle' },
-  avatar: { width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #D6EEF7, #B5D4E4)', color: '#1B8DB3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
-  input: { fontFamily: 'system-ui, sans-serif', fontSize: 13, color: '#1a1a1a', background: '#F8FAFB', border: '1px solid #E0E6EB', borderRadius: 8, padding: '8px 10px', width: '100%', outline: 'none', boxSizing: 'border-box' },
-  formRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 },
-  formGroup: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 },
-  label: { fontSize: 11, color: '#888', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' },
-  btn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: '1px solid #E0E6EB', background: '#fff', color: '#555', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600 },
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 700, boxShadow: '0 2px 8px rgba(27,141,179,0.25)' },
-  btnSm: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid #E0E6EB', background: '#fff', color: '#555', fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' },
-  alink: { color: '#1B8DB3', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
-  tabs: { display: 'flex', gap: 2, marginBottom: 16, background: '#F0F4F7', padding: 3, borderRadius: 8, width: 'fit-content' },
-  tab: { padding: '6px 16px', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#888', fontWeight: 500 },
-  tabActive: { background: '#fff', color: '#1B8DB3', fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
-  empty: { fontSize: 13, color: '#bbb', padding: '16px 0', textAlign: 'center' },
-  detailRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '7px 0', borderBottom: '0.5px solid #F0F0F0' },
-  searchDrop: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 10, zIndex: 200, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' },
-  searchItem: { padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '0.5px solid #F5F5F5' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' },
-  modal: { background: '#fff', borderRadius: 14, padding: '1.5rem', width: 460, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' },
+function goTo(n) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page' + n).classList.add('active');
+  for (let i = 1; i <= 4; i++) {
+    const s = document.getElementById('s' + i);
+    s.classList.remove('active', 'done');
+    if (i < n) s.classList.add('done');
+    else if (i === n) s.classList.add('active');
+  }
+  if (n === 2) checkOverLimit();
+  if (n === 3) initCalendar();
+  if (n === 4) buildSummary();
+}
+
+// ── Page 1 ────────────────────────────────────────────
+function selectLocation(btn, loc) {
+  document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  state.location = loc; state.selected = []; state.anyAvailable = false;
+  document.getElementById('therapist-section').style.display = 'block';
+  const anyBtn = document.getElementById('any-avail-btn');
+  if (anyBtn) anyBtn.classList.remove('sel');
+  renderGrid(); updateSelBar();
+}
+
+function resetLocation() {
+  document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('sel'));
+  state.location = null; state.selected = [];
+  document.getElementById('therapist-section').style.display = 'none';
+}
+
+function selectAnyAvailable() {
+  // Toggle — if already in any-available mode, deselect
+  const btn = document.getElementById('any-avail-btn');
+  if (btn.classList.contains('sel')) {
+    btn.classList.remove('sel');
+    state.selected = [];
+    state.anyAvailable = false;
+    // Re-enable therapist cards
+    document.querySelectorAll('.t-card').forEach(c => c.style.opacity = '');
+    updateSelBar();
+    return;
+  }
+  // Select any available — use all therapists at this location
+  btn.classList.add('sel');
+  state.anyAvailable = true;
+  state.selected = THERAPISTS[state.location].slice(); // all therapists
+  // Grey out individual cards to show they're not needed
+  document.querySelectorAll('.t-card').forEach(c => { c.style.opacity = '0.4'; c.style.pointerEvents = 'none'; });
+  document.getElementById('hint-text').textContent = 'Any available therapist will be matched to your session.';
+  document.getElementById('btn1').disabled = false;
+  // Update sel bar
+  const s1 = document.getElementById('slot1');
+  const s2 = document.getElementById('slot2');
+  const s3 = document.getElementById('slot3');
+  s1.innerHTML = '<div class="sel-lbl">First</div><div class="sel-name">Any available</div>';
+  s2.innerHTML = '<div class="sel-lbl">Second</div><div class="sel-empty">Auto-matched</div>';
+  s3.innerHTML = '<div class="sel-lbl">Third</div><div class="sel-empty">Auto-matched</div>';
+}
+
+function toggleTherapist(id) {
+  const t = THERAPISTS[state.location].find(x => x.id === id);
+  const idx = state.selected.findIndex(x => x.id === id);
+  if (idx !== -1) state.selected.splice(idx, 1);
+  else if (state.selected.length < 3) state.selected.push(t);
+  else return;
+  renderGrid(); updateSelBar();
+}
+
+function renderGrid() {
+  const maxed = state.selected.length >= 3;
+  const selClasses = ['sel1', 'sel2', 'sel3'];
+  const badges = ['b1', 'b2', 'b3'];
+  const labels = ['1st', '2nd', '3rd'];
+  document.getElementById('t-grid').innerHTML = THERAPISTS[state.location].map(t => {
+    const idx = state.selected.findIndex(x => x.id === t.id);
+    const isSel = idx !== -1;
+    const cls = isSel ? selClasses[idx] : (maxed ? 'maxed' : '');
+    return `<div class="t-card ${cls}" onclick="toggleTherapist(${t.id})">
+      ${isSel ? `<div class="t-badge ${badges[idx]}">${labels[idx]}</div>` : ''}
+      <div class="t-av" style="background:${t.bg};color:${t.fg}">${t.initials}</div>
+      <div class="t-name">${t.name}</div>
+      <div class="t-spec">${t.spec}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateSelBar() {
+  ['slot1', 'slot2', 'slot3'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    const labels = ['First', 'Second', 'Third'];
+    el.innerHTML = state.selected[i]
+      ? `<div class="sel-lbl">${labels[i]}</div><div class="sel-name">${state.selected[i].name}</div>`
+      : `<div class="sel-lbl">${labels[i]}</div><div class="sel-empty">${i === 0 ? 'Not selected' : 'Optional'}</div>`;
+  });
+  const n = state.selected.length;
+  document.getElementById('hint-text').textContent =
+    n === 3 ? '3 therapists selected — ready to continue' :
+    n === 2 ? '2 selected — add a third or continue' :
+    n === 1 ? '1 selected — add more or continue' :
+    'Select 1, 2, or 3 therapists.';
+  document.getElementById('btn1').disabled = n === 0;
+}
+
+// ── Page 2: Duration + Session Limit Check ────────────
+function checkOverLimit() {
+  const used = client.sessionsUsed || 0;
+  const limit = client.sessionsLimit || MEMBERSHIP_LIMITS[client.membership] || 4;
+  const now = new Date();
+  const monthName = MONTHS[now.getMonth()];
+  const notice = document.getElementById('over-limit-notice');
+  const noticeText = document.getElementById('over-limit-text');
+
+  if (used >= limit) {
+    state.isOverLimit = true;
+    noticeText.textContent = `You've used all ${limit} of your ${client.membership} sessions for ${monthName}. You can still book — staff will process additional session billing after your visit.`;
+    notice.style.display = 'flex';
+  } else {
+    state.isOverLimit = false;
+    const remaining = limit - used;
+    noticeText.textContent = `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining for ${monthName}.`;
+    notice.style.display = 'flex';
+    notice.className = 'notice teal';
+    noticeText.style.color = '';
+  }
+}
+
+function selectDuration(btn, mins, numSlots) {
+  document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  state.duration = mins; state.numSlots = numSlots;
+  document.getElementById('addon-info').style.display = mins > 50 ? 'flex' : 'none';
+  document.getElementById('btn2').disabled = false;
+}
+
+function toggleAddon(btn, key) {
+  btn.classList.toggle('sel');
+  const idx = state.addons.indexOf(key);
+  if (idx === -1) state.addons.push(key); else state.addons.splice(idx, 1);
+}
+
+// ── Page 3: Calendar ──────────────────────────────────
+function initCalendar() {
+  state.date = null; state.timeSlot = null;
+  document.getElementById('time-section').style.display = 'none';
+  document.getElementById('btn3').disabled = true;
+  renderCalendar(); loadAvailableDates();
+}
+
+function isSunday(y, m, d) { return new Date(y, m, d).getDay() === 0; }
+
+function renderCalendar() {
+  document.getElementById('cal-month').textContent = `${MONTHS[state.calMonth]} ${state.calYear}`;
+  const first = new Date(state.calYear, state.calMonth, 1).getDay();
+  const days = new Date(state.calYear, state.calMonth + 1, 0).getDate();
+  const today = new Date();
+  let html = DAYS.map(d => `<div class="date-hdr">${d}</div>`).join('');
+  for (let i = 0; i < first; i++) html += `<div class="date-btn empty"></div>`;
+  for (let d = 1; d <= days; d++) {
+    const dt = `${state.calYear}-${String(state.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isPast = new Date(state.calYear, state.calMonth, d) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const isToday = d === today.getDate() && state.calMonth === today.getMonth() && state.calYear === today.getFullYear();
+    const isSun = isSunday(state.calYear, state.calMonth, d);
+    const isAvail = state.availableDates.includes(dt);
+    const isSel = state.date === dt;
+    let cls = '';
+    if (isSun) cls = 'closed';
+    else if (isPast) cls = 'unavail';
+    else if (!isAvail && state.availableDates.length > 0) cls = 'unavail';
+    else if (isSel) cls = 'sel';
+    else if (isToday) cls = 'today';
+    html += `<div class="date-btn ${cls}" ${!isSun && !isPast ? `onclick="selectDate('${dt}')"` : ''}><div class="date-num">${d}</div>${isSun ? '<div class="date-closed-lbl">Closed</div>' : ''}</div>`;
+  }
+  document.getElementById('date-grid').innerHTML = html;
+}
+
+async function loadAvailableDates() {
+  const typeId = MEMBERSHIP_TYPES[client.membership] || 43687655;
+  const calId = state.selected[0].id;
+  const month = `${state.calYear}-${String(state.calMonth + 1).padStart(2, '0')}`;
+  try {
+    const dates = await api('availability/dates', { appointmentTypeID: typeId, calendarID: calId, month, timezone: 'America/New_York' });
+    state.availableDates = Array.isArray(dates) ? dates.map(d => d.date).filter(dt => new Date(dt + 'T12:00:00').getDay() !== 0) : [];
+    renderCalendar();
+  } catch(e) { console.error(e); }
+}
+
+function prevMonth() {
+  if (state.calMonth === 0) { state.calMonth = 11; state.calYear--; } else state.calMonth--;
+  state.availableDates = []; renderCalendar(); loadAvailableDates();
+}
+
+function nextMonth() {
+  if (state.calMonth === 11) { state.calMonth = 0; state.calYear++; } else state.calMonth++;
+  state.availableDates = []; renderCalendar(); loadAvailableDates();
+}
+
+async function selectDate(dt) {
+  state.date = dt; state.timeSlot = null;
+  // Track which month this booking is for
+  state.bookingMonth = dt.substring(0, 7);
+  document.getElementById('btn3').disabled = true;
+  renderCalendar();
+  document.getElementById('time-section').style.display = 'block';
+  document.getElementById('time-container').innerHTML = `<div class="loading"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></div>`;
+  try { await loadTimes(dt); }
+  catch(e) { document.getElementById('time-container').innerHTML = `<div class="no-times">Unable to load times. Please try another date.</div>`; }
+}
+
+// ── Slot Chaining Algorithm ───────────────────────────
+async function loadTimes(dt) {
+  const typeId = MEMBERSHIP_TYPES[client.membership] || 43687655;
+  const tz = 'America/New_York';
+  const numSlots = state.numSlots;
+
+  const allAvail = await Promise.all(
+    state.selected.map(t =>
+      api('availability/times', { appointmentTypeID: typeId, calendarID: t.id, date: dt, timezone: tz })
+        .then(times => (Array.isArray(times) ? times : []).map(s => ({ time: s.time, therapist: t })))
+    )
+  );
+
+  const timeMap = {};
+  allAvail.forEach(therapistSlots => {
+    therapistSlots.forEach(({ time, therapist }) => {
+      const ts = new Date(time).getTime();
+      if (!timeMap[ts]) timeMap[ts] = [];
+      timeMap[ts].push({ time, therapist });
+    });
+  });
+
+  const SLOT_MS = 30 * 60 * 1000;
+  const chains = [];
+  const startTimes = Object.keys(timeMap).map(Number).sort((a, b) => a - b);
+  startTimes.forEach(startTs => buildChains(startTs, numSlots, [], chains, timeMap, SLOT_MS));
+
+  chains.sort((a, b) => new Date(a[0].time).getTime() - new Date(b[0].time).getTime());
+
+  const byStartTime = {};
+  chains.forEach(chain => {
+    const key = chain[0].time;
+    if (!byStartTime[key]) byStartTime[key] = [];
+    byStartTime[key].push(chain);
+  });
+
+  state.timeSlots = Object.values(byStartTime).map(variants => {
+    variants.sort((a, b) => new Set(b.map(s => s.therapist.id)).size - new Set(a.map(s => s.therapist.id)).size);
+    return variants[0];
+  });
+
+  renderTimes();
+}
+
+function buildChains(ts, remaining, current, results, timeMap, SLOT_MS) {
+  if (remaining === 0) { results.push([...current]); return; }
+  const available = timeMap[ts];
+  if (!available || !available.length) return;
+  const tried = new Set();
+  available.forEach(({ time, therapist }) => {
+    if (tried.has(therapist.id)) return;
+    tried.add(therapist.id);
+    current.push({ time, therapist });
+    buildChains(ts + SLOT_MS, remaining - 1, current, results, timeMap, SLOT_MS);
+    current.pop();
+  });
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  let h = d.getHours(), m = d.getMinutes();
+  const ap = h >= 12 ? 'pm' : 'am';
+  if (h > 12) h -= 12; if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2, '0')} ${ap}`;
+}
+
+function renderTimes() {
+  const container = document.getElementById('time-container');
+  if (!state.timeSlots.length) {
+    container.innerHTML = `<div class="no-times">No available ${state.duration}-min sessions on this date. Try another day or reduce the session length.</div>`;
+    return;
+  }
+  document.getElementById('time-label').textContent = `Available ${state.duration}-min sessions`;
+  container.innerHTML = `<div class="time-grid">${state.timeSlots.map((chain, i) => {
+    const detail = chain.map(s => `${formatTime(s.time)} ${s.therapist.name.split(' ')[0]}`).join(' → ');
+    return `<div class="time-btn" onclick="selectTime(${i})">
+      <div>${formatTime(chain[0].time)}</div>
+      <div class="time-sub">${detail}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function selectTime(idx) {
+  state.timeSlot = idx;
+  document.querySelectorAll('.time-btn').forEach((b, i) => b.classList.toggle('sel', i === idx));
+  document.getElementById('btn3').disabled = false;
+}
+
+// ── Page 4: Summary ───────────────────────────────────
+function buildSummary() {
+  const chain = state.timeSlots[state.timeSlot];
+  const loc = state.location === 'braintree' ? '89 Hancock St, Braintree' : '174 Middle St, Weymouth';
+  const used = client.sessionsUsed || 0;
+  const limit = client.sessionsLimit || MEMBERSHIP_LIMITS[client.membership] || 4;
+  const isOver = used >= limit;
+
+  // Show over-limit billing notice
+  const billingNotice = document.getElementById('billing-notice');
+  const billingText = document.getElementById('billing-notice-text');
+  const overConsent = document.getElementById('over-consent-box');
+
+  if (isOver) {
+    billingText.textContent = `You've reached your ${client.membership} monthly limit (${used}/${limit} sessions used). Staff will process additional session billing after your visit.`;
+    billingNotice.style.display = 'flex';
+    overConsent.style.display = 'block';
+  } else {
+    billingNotice.style.display = 'none';
+    overConsent.style.display = 'none';
+  }
+
+  let rows = `<div class="sum-row"><span class="sum-lbl">Member</span><span class="sum-val">${client.first} ${client.last}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Membership</span><span class="sum-val">${client.membership}/month · ${used}/${limit} used</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Location</span><span class="sum-val">${loc}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Date</span><span class="sum-val">${formatDate(state.date)}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Duration</span><span class="sum-val">${state.duration} min${state.duration > 50 ? ' (+' + (state.duration - 50) + ' min add-on)' : ''}</span></div>`;
+  chain.forEach((slot, i) => {
+    rows += `<div class="sum-row"><span class="sum-lbl">Slot ${i + 1}</span><span class="sum-val">${formatTime(slot.time)} — ${slot.therapist.name}</span></div>`;
+  });
+  if (isOver) rows += `<div class="sum-row"><span class="sum-lbl">Billing</span><span class="sum-val" style="color:var(--amber)">Additional session — billed after visit</span></div>`;
+  
+  document.getElementById('summary').innerHTML = rows;
+}
+
+function formatDate(dt) {
+  return new Date(dt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+async function submitBooking() {
+  const c1 = document.getElementById('consent1').checked;
+  const c2 = document.getElementById('consent2').checked;
+  const used = client.sessionsUsed || 0;
+  const limit = client.sessionsLimit || MEMBERSHIP_LIMITS[client.membership] || 4;
+  const isOver = used >= limit;
+  const c3 = isOver ? document.getElementById('consent3').checked : true;
+  const errMsg = document.getElementById('error-msg');
+
+  if (!c1 || !c2 || !c3) { errMsg.classList.add('show'); return; }
+  errMsg.classList.remove('show');
+
+  const btn = document.getElementById('btn4');
+  btn.disabled = true; btn.textContent = 'Booking...';
+  const chain = state.timeSlots[state.timeSlot];
+  const typeId = MEMBERSHIP_TYPES[client.membership] || 43687655;
+
+  try {
+    await Promise.all(chain.map(slot => bookAppt(typeId, slot.therapist.id, slot.time)));
+    // Record session usage for the booking month
+    // Record one session per slot booked
+    for (let i = 0; i < chain.length; i++) {
+      await fetch(`${PROXY}/api/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'record', code: client.code, month: state.bookingMonth })
+      });
+    }
+    const overNote = isOver ? ' This is an additional session beyond your monthly limit — staff will process billing after your visit.' : '';
+    const addonNote = '';
+    document.getElementById('success-msg').textContent = `Confirmed, ${client.first}! A confirmation email is heading to ${client.email}.${overNote}${addonNote} See you soon!`;
+    goTo(5);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Confirm booking';
+    errMsg.textContent = 'Something went wrong. Please try again.';
+    errMsg.classList.add('show');
+  }
+}
+
+function resetAndBookAgain() {
+  // Reset state fully
+  state = {
+    location: null, selected: [], anyAvailable: false, duration: null, numSlots: null,
+    addons: [], date: null, timeSlot: null,
+    calYear: new Date().getFullYear(), calMonth: new Date().getMonth(),
+    availableDates: [], timeSlots: [],
+    isOverLimit: false, bookingMonth: null
+  };
+  // Refresh client session data
+  fetch(`${PROXY}/api/clients?code=${client.code}`)
+    .then(r => r.json())
+    .then(c => {
+      client = c;
+      const used = c.sessionsUsed || 0;
+      const limit = c.sessionsLimit || MEMBERSHIP_LIMITS[c.membership] || 4;
+      const remaining = Math.max(0, limit - used);
+      const pill = document.getElementById('session-pill');
+      const now = new Date();
+      const monthName = MONTHS_SHORT[now.getMonth()];
+      if (used >= limit) {
+        pill.textContent = `${monthName}: ${used}/${limit} — over limit`;
+        pill.classList.add('over');
+      } else {
+        pill.classList.remove('over');
+        pill.textContent = `${monthName}: ${remaining} session${remaining !== 1 ? 's' : ''} left`;
+      }
+    });
+  // Reset UI
+  document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('therapist-section').style.display = 'none';
+  document.getElementById('consent1').checked = false;
+  document.getElementById('consent2').checked = false;
+  const c3 = document.getElementById('consent3');
+  if (c3) c3.checked = false;
+  goTo(1);
+}
+
+function bookAppt(typeId, calId, datetime) {
+  return fetch(`${PROXY}/api/acuity?endpoint=appointments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      firstName: client.first, lastName: client.last,
+      email: client.email, phone: client.phone,
+      appointmentTypeID: typeId, calendarID: calId,
+      datetime: datetime,
+      notes: '* Booked online via member portal',
+      fields: [{ id: 13049797, value: 'yes' }]
+    })
+  }).then(r => { if (!r.ok) throw new Error('Failed'); return r.json(); });
+}
+
+// ── NON-MEMBER FLOW ───────────────────────────────────
+const NM_TYPE_ID = 87550896; // Non-Member Stretch & Bodywork
+let nmState = {
+  location: null, selected: null, anyAvailable: false,
+  date: null, timeSlot: null, timeSlots: [],
+  calYear: new Date().getFullYear(), calMonth: new Date().getMonth(),
+  availableDates: []
 };
+
+function switchToNonMember() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('nonmember').style.display = 'block';
+  // If this was triggered by a guest code, go straight to therapist selection
+  if (window.guestClient) {
+    nmGoTo(2);
+  }
+}
+
+function nmGoTo(n) {
+  // If guest, skip page 1 (details already pre-filled)
+  if (n === 2 && window.guestClient) {
+    const wn = document.getElementById('nm-welcome-name');
+    if (wn) wn.textContent = `Welcome, ${window.guestClient.first}!`;
+  }
+  document.querySelectorAll('#nonmember .page').forEach(p => p.classList.remove('active'));
+  document.getElementById('nm-page' + n).classList.add('active');
+  ['nm-s1','nm-s2','nm-s3','nm-s4'].forEach((id, i) => {
+    const s = document.getElementById(id);
+    s.classList.remove('active','done');
+    if (i+1 < n) s.classList.add('done');
+    else if (i+1 === n) s.classList.add('active');
+  });
+  if (n === 2) nmInitTherapists();
+  if (n === 3) nmInitCalendar();
+  if (n === 4) nmBuildSummary();
+
+  // Validate page 1 only if not a guest
+  if (n === 2 && !window.guestClient) {
+    const first = document.getElementById('nm-first').value.trim();
+    const last = document.getElementById('nm-last').value.trim();
+    const email = document.getElementById('nm-email').value.trim();
+    const phone = document.getElementById('nm-phone').value.trim();
+    if (!first || !last || !email || !phone) {
+      document.getElementById('nm-error1').classList.add('show');
+      document.querySelectorAll('#nonmember .page').forEach(p => p.classList.remove('active'));
+      document.getElementById('nm-page1').classList.add('active');
+      return;
+    }
+    document.getElementById('nm-error1').classList.remove('show');
+  }
+}
+
+function nmInitTherapists() {
+  if (!nmState.location) return;
+  nmRenderGrid();
+}
+
+function nmSelectLocation(btn, loc) {
+  document.querySelectorAll('#nm-loc-braintree, #nm-loc-weymouth').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  nmState.location = loc; nmState.selected = null; nmState.anyAvailable = false;
+  document.getElementById('nm-therapist-section').style.display = 'block';
+  document.getElementById('nm-any-avail-btn').classList.remove('sel');
+  nmRenderGrid();
+  document.getElementById('nm-btn2').disabled = true;
+}
+
+function nmSelectAnyAvailable() {
+  const btn = document.getElementById('nm-any-avail-btn');
+  if (btn.classList.contains('sel')) {
+    btn.classList.remove('sel');
+    nmState.anyAvailable = false; nmState.selected = null;
+    document.querySelectorAll('#nm-t-grid .t-card').forEach(c => { c.style.opacity=''; c.style.pointerEvents=''; });
+    document.getElementById('nm-btn2').disabled = true;
+    return;
+  }
+  btn.classList.add('sel');
+  nmState.anyAvailable = true;
+  nmState.selected = THERAPISTS[nmState.location];
+  document.querySelectorAll('#nm-t-grid .t-card').forEach(c => { c.style.opacity='0.4'; c.style.pointerEvents='none'; });
+  document.getElementById('nm-hint-text').textContent = 'Any available therapist will be matched to your session.';
+  document.getElementById('nm-btn2').disabled = false;
+}
+
+function nmSelectTherapist(id) {
+  const btn = document.getElementById('nm-any-avail-btn');
+  btn.classList.remove('sel');
+  nmState.anyAvailable = false;
+  const t = THERAPISTS[nmState.location].find(x => x.id === id);
+  nmState.selected = [t];
+  nmRenderGrid();
+  document.getElementById('nm-btn2').disabled = false;
+}
+
+function nmRenderGrid() {
+  document.getElementById('nm-t-grid').innerHTML = THERAPISTS[nmState.location].map(t => {
+    const isSel = nmState.selected && !nmState.anyAvailable && nmState.selected[0]?.id === t.id;
+    return `<div class="t-card ${isSel ? 'sel1' : ''}" onclick="nmSelectTherapist(${t.id})">
+      <div class="t-av" style="background:${t.bg};color:${t.fg}">${t.initials}</div>
+      <div class="t-name">${t.name}</div>
+      <div class="t-spec">${t.spec}</div>
+    </div>`;
+  }).join('');
+}
+
+function nmInitCalendar() {
+  nmState.date = null; nmState.timeSlot = null;
+  document.getElementById('nm-time-section').style.display = 'none';
+  document.getElementById('nm-btn3').disabled = true;
+  nmRenderCalendar(); nmLoadAvailableDates();
+}
+
+function nmRenderCalendar() {
+  document.getElementById('nm-cal-month').textContent = `${MONTHS[nmState.calMonth]} ${nmState.calYear}`;
+  const first = new Date(nmState.calYear, nmState.calMonth, 1).getDay();
+  const days = new Date(nmState.calYear, nmState.calMonth + 1, 0).getDate();
+  const today = new Date();
+  let html = DAYS.map(d => `<div class="date-hdr">${d}</div>`).join('');
+  for (let i = 0; i < first; i++) html += `<div class="date-btn empty"></div>`;
+  for (let d = 1; d <= days; d++) {
+    const dt = `${nmState.calYear}-${String(nmState.calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isPast = new Date(nmState.calYear, nmState.calMonth, d) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const isToday = d === today.getDate() && nmState.calMonth === today.getMonth() && nmState.calYear === today.getFullYear();
+    const isSun = new Date(nmState.calYear, nmState.calMonth, d).getDay() === 0;
+    const isAvail = nmState.availableDates.includes(dt);
+    const isSel = nmState.date === dt;
+    let cls = '';
+    if (isSun) cls = 'closed';
+    else if (isPast) cls = 'unavail';
+    else if (!isAvail && nmState.availableDates.length > 0) cls = 'unavail';
+    else if (isSel) cls = 'sel';
+    else if (isToday) cls = 'today';
+    html += `<div class="date-btn ${cls}" ${!isSun && !isPast ? `onclick="nmSelectDate('${dt}')"` : ''}><div class="date-num">${d}</div>${isSun ? '<div class="date-closed-lbl">Closed</div>' : ''}</div>`;
+  }
+  document.getElementById('nm-date-grid').innerHTML = html;
+}
+
+async function nmLoadAvailableDates() {
+  const calId = nmState.selected[0].id;
+  const month = `${nmState.calYear}-${String(nmState.calMonth+1).padStart(2,'0')}`;
+  try {
+    const dates = await api('availability/dates', { appointmentTypeID: NM_TYPE_ID, calendarID: calId, month, timezone: 'America/New_York' });
+    nmState.availableDates = Array.isArray(dates) ? dates.map(d => d.date).filter(dt => new Date(dt+'T12:00:00').getDay() !== 0) : [];
+    nmRenderCalendar();
+  } catch(e) { console.error(e); }
+}
+
+function nmPrevMonth() {
+  if (nmState.calMonth === 0) { nmState.calMonth = 11; nmState.calYear--; } else nmState.calMonth--;
+  nmState.availableDates = []; nmRenderCalendar(); nmLoadAvailableDates();
+}
+
+function nmNextMonth() {
+  if (nmState.calMonth === 11) { nmState.calMonth = 0; nmState.calYear++; } else nmState.calMonth++;
+  nmState.availableDates = []; nmRenderCalendar(); nmLoadAvailableDates();
+}
+
+async function nmSelectDate(dt) {
+  nmState.date = dt; nmState.timeSlot = null;
+  document.getElementById('nm-btn3').disabled = true;
+  nmRenderCalendar();
+  document.getElementById('nm-time-section').style.display = 'block';
+  document.getElementById('nm-time-container').innerHTML = `<div class="loading"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></div>`;
+  try {
+    const therapists = nmState.anyAvailable ? THERAPISTS[nmState.location] : nmState.selected;
+    const allTimes = await Promise.all(
+      therapists.map(t => api('availability/times', { appointmentTypeID: NM_TYPE_ID, calendarID: t.id, date: dt, timezone: 'America/New_York' })
+        .then(times => (Array.isArray(times) ? times : []).map(s => ({ time: s.time, therapist: t })))
+      )
+    );
+    // For non-members, just show individual 50-min slots (single slot per therapist)
+    const allSlots = allTimes.flat();
+    // Deduplicate by time, keep first therapist available
+    const seen = new Set();
+    nmState.timeSlots = allSlots.filter(s => {
+      if (seen.has(s.time)) return false;
+      seen.add(s.time);
+      return true;
+    }).sort((a, b) => new Date(a.time) - new Date(b.time));
+    nmRenderTimes();
+  } catch(e) {
+    document.getElementById('nm-time-container').innerHTML = `<div class="no-times">Unable to load times. Please try another date.</div>`;
+  }
+}
+
+function nmRenderTimes() {
+  const c = document.getElementById('nm-time-container');
+  if (!nmState.timeSlots.length) {
+    c.innerHTML = `<div class="no-times">No available times on this date. Please select another day.</div>`;
+    return;
+  }
+  c.innerHTML = `<div class="time-grid">${nmState.timeSlots.map((s, i) =>
+    `<div class="time-btn" onclick="nmSelectTime(${i})">
+      <div>${formatTime(s.time)}</div>
+      <div class="time-sub">${s.therapist.name.split(' ')[0]} · 50 min</div>
+    </div>`
+  ).join('')}</div>`;
+}
+
+function nmSelectTime(idx) {
+  nmState.timeSlot = idx;
+  document.querySelectorAll('#nm-time-container .time-btn').forEach((b, i) => b.classList.toggle('sel', i === idx));
+  document.getElementById('nm-btn3').disabled = false;
+}
+
+function nmBuildSummary() {
+  const slot = nmState.timeSlots[nmState.timeSlot];
+  const loc = nmState.location === 'braintree' ? '89 Hancock St, Braintree' : '174 Middle St, Weymouth';
+  const first = document.getElementById('nm-first').value.trim();
+  const last = document.getElementById('nm-last').value.trim();
+  let rows = `<div class="sum-row"><span class="sum-lbl">Name</span><span class="sum-val">${first} ${last}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Location</span><span class="sum-val">${loc}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Date</span><span class="sum-val">${formatDate(nmState.date)}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Time</span><span class="sum-val">${formatTime(slot.time)}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Therapist</span><span class="sum-val">${slot.therapist.name}</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Duration</span><span class="sum-val">50 min</span></div>`;
+  rows += `<div class="sum-row"><span class="sum-lbl">Rate</span><span class="sum-val">$95 — pay in studio</span></div>`;
+  document.getElementById('nm-summary').innerHTML = rows;
+}
+
+async function nmSubmit() {
+  const c1 = document.getElementById('nm-consent1').checked;
+  const c2 = document.getElementById('nm-consent2').checked;
+  const errMsg = document.getElementById('nm-error4');
+  if (!c1 || !c2) { errMsg.classList.add('show'); return; }
+  errMsg.classList.remove('show');
+  const btn = document.getElementById('nm-btn4');
+  btn.disabled = true; btn.textContent = 'Booking...';
+  const slot = nmState.timeSlots[nmState.timeSlot];
+  const first = document.getElementById('nm-first').value.trim();
+  const last = document.getElementById('nm-last').value.trim();
+  const email = document.getElementById('nm-email').value.trim();
+  const phone = document.getElementById('nm-phone').value.trim();
+  try {
+    await fetch(`${PROXY}/api/acuity?endpoint=appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName: first, lastName: last, email, phone,
+        appointmentTypeID: NM_TYPE_ID,
+        calendarID: slot.therapist.id,
+        datetime: slot.time,
+        notes: '* Booked online — non-member',
+        fields: [{ id: 13049797, value: 'yes' }]
+      })
+    }).then(r => { if (!r.ok) throw new Error('Failed'); return r.json(); });
+    document.getElementById('nm-success-msg').textContent = `Confirmed, ${first}! A confirmation email is heading to ${email}. Please bring $95 to pay in studio. See you soon!`;
+    nmGoTo(5);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Confirm booking';
+    errMsg.textContent = 'Something went wrong. Please try again.';
+    errMsg.classList.add('show');
+  }
+}
+
+</script>
