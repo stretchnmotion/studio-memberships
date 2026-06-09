@@ -141,11 +141,26 @@ function Dashboard() {
     setLoading(false);
   }
 
+  // Silent refresh — updates data in background without loading flash
+  async function refreshSilent() {
+    try {
+      const [mr, fr, nm] = await Promise.all([
+        fetch('/api/members'),
+        fetch('/api/flags'),
+        fetch('/api/members/commitment-check'),
+      ]);
+      const [md, fd, nmd] = await Promise.all([mr.json(), fr.json(), nm.json()]);
+      setMembers(Array.isArray(md) ? md : []);
+      setFlags(Array.isArray(fd) ? fd : []);
+      setNewMembersData(Array.isArray(nmd) ? nmd : []);
+    } catch (e) { console.error(e); }
+  }
+
   async function runCommitmentCheck() {
     setCommitmentChecking(true);
     try {
       await fetch('/api/members/commitment-check', { method: 'POST' });
-      await fetchAll();
+      await refreshSilent();
     } catch (e) { console.error(e); }
     setCommitmentChecking(false);
   }
@@ -171,7 +186,16 @@ function Dashboard() {
     if (!newMember.firstName || !newMember.lastName || !newMember.email) { alert('Name and email are required.'); return; }
     const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newMember, credits: 0, status: 'active', createdAt: new Date(), commitmentStart: newMember.commitmentStart || new Date().toISOString().split('T')[0] }) });
     const doc = await res.json();
+    // Update local state instantly — no refresh needed
     setMembers(prev => [...prev, doc]);
+    if (newMember.commitmentStart) {
+      const start = new Date(newMember.commitmentStart);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 2);
+      const daysLeft = Math.ceil((end - new Date()) / (1000 * 60 * 60 * 24));
+      const daysIn = Math.floor((new Date() - start) / (1000 * 60 * 60 * 24));
+      setNewMembersData(prev => [...prev, { ...doc, commitmentEnd: end.toISOString(), daysLeft, daysIn, isEnding: daysLeft <= 7, isOverdue: daysLeft < 0 }]);
+    }
     setNewMember({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '', commitmentStart: new Date().toISOString().split('T')[0] });
     setNmSuccess(true); setTimeout(() => setNmSuccess(false), 3000);
   }
@@ -195,7 +219,10 @@ function Dashboard() {
     if (!flagForm.memberId) { alert('Select a member.'); return; }
     const res = await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...flagForm, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }) });
     const doc = await res.json();
-    setFlags(prev => [doc, ...prev]); setShowFlagModal(false); setFlagForm({ memberId: '', reason: 'card', note: '' });
+    // Instant local update
+    setFlags(prev => [doc, ...prev]);
+    setShowFlagModal(false);
+    setFlagForm({ memberId: '', reason: 'card', note: '' });
   }
 
   async function resolveFlag(f) {
@@ -219,7 +246,7 @@ function Dashboard() {
           const res = await fetch('/api/members/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members: results.data }) });
           const data = await res.json();
           setImportMsg(`✓ ${data.inserted} new, ${data.updated} updated`);
-          fetchAll();
+          refreshSilent();
         } catch { setImportMsg('Import failed.'); }
       }
     });
@@ -314,7 +341,7 @@ function Dashboard() {
           <div style={{ fontSize: 64 }}>🎉</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: '#1B8DB3' }}>All done, Admin Master!</div>
           <div style={{ fontSize: 14, color: '#888' }}>{done} processed · {skipped} skipped</div>
-          <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { fetchAll(); nav('members'); }}>Back to Members</button>
+          <button style={{ ...S.btnPrimary, padding: '10px 24px', fontSize: 14, marginTop: 8 }} onClick={() => { refreshSilent(); nav('members'); }}>Back to Members</button>
         </div>
       );
 
@@ -416,7 +443,7 @@ function Dashboard() {
           });
           const result = await res.json();
           setDone(true);
-          fetchAll();
+          refreshSilent();
           alert(`✓ Deleted ${result.deleted} records from studio-memberships. Acuity unchanged.`);
           setData(null);
           setSelected(new Set());
@@ -842,8 +869,10 @@ function Dashboard() {
                                 <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                                   <button onClick={() => viewMember(m, 'newmembers')} style={S.btnSm}>View Profile</button>
                                   <button onClick={async () => {
-                                    await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId: String(m._id), reason: 'commitment', note: `Commitment ${isOverdue ? 'ended' : 'ending in ' + m.daysLeft + ' days'} — confirm continuation`, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }) });
-                                    fetchAll();
+                                    const flagData = { memberId: String(m._id), reason: 'commitment', note: `Commitment ${isOverdue ? 'ended' : 'ending in ' + m.daysLeft + ' days'} — confirm continuation`, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), resolved: false };
+                                    const res = await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(flagData) });
+                                    const doc = await res.json();
+                                    setFlags(prev => [doc, ...prev]);
                                   }} style={{ ...S.btnSm, color: '#C05B00', borderColor: '#FED7A0' }}>
                                     🔔 Flag for Follow-up
                                   </button>
