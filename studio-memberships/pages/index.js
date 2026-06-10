@@ -332,10 +332,13 @@ function Dashboard() {
 
       async function runAutoClean() {
         setAutoCleaning(true);
-        // Bulk mark all 60+ day no-package members as inactive
-        await Promise.all(autoInactive.map(m =>
-          fetch('/api/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...m, status: 'inactive' }) })
-        ));
+        const ids = autoInactive.map(m => String(m._id));
+        await fetch('/api/members/bulk-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, updates: { status: 'inactive' } }),
+        });
+        // Update local state instantly
         setMembers(prev => prev.map(m =>
           autoInactive.find(x => String(x._id) === String(m._id)) ? { ...m, status: 'inactive' } : m
         ));
