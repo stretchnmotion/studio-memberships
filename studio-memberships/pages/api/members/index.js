@@ -26,9 +26,12 @@ export default async function handler(req, res) {
   if (req.method === 'PATCH') {
     const { ids, updates } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No IDs' });
-    const objectIds = ids.map(id => new ObjectId(String(id)));
+    const objectIds = ids.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
     const result = await col.updateMany(
-      { _id: { $in: objectIds } },
+      { $or: [
+        { _id: { $in: objectIds } },
+        { _id: { $in: ids } }
+      ]},
       { $set: updates }
     );
     return res.status(200).json({ ok: true, updated: result.modifiedCount });
