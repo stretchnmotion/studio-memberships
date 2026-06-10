@@ -17,14 +17,17 @@ function fullName(m) { return `${m.firstName} ${m.lastName}`; }
 
 function StatusBadge({ status }) {
   const map = {
-    active: { bg: '#E1F5EE', color: '#0F6E56', label: 'Active' },
-    declined: { bg: '#FCEBEB', color: '#A32D2D', label: 'Declined' },
-    expiring: { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
-    paused: { bg: '#F1EFE8', color: '#5F5E5A', label: 'Paused' },
-    inactive: { bg: '#F0F0F0', color: '#888', label: 'Inactive' },
+    active:    { bg: '#E1F5EE', color: '#0F6E56', label: 'Active' },
+    declined:  { bg: '#FCEBEB', color: '#A32D2D', label: 'Declined' },
+    expiring:  { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
+    paused:    { bg: '#F1EFE8', color: '#5F5E5A', label: 'Paused' },
+    inactive:  { bg: '#F0F0F0', color: '#888', label: 'Inactive' },
+    walkin:    { bg: '#EEF2FF', color: '#4338CA', label: 'Walk-in' },
+    frequent:  { bg: '#FDF4FF', color: '#7C3AED', label: 'Frequent Visitor' },
+    og:        { bg: '#FFFBEB', color: '#92400E', label: '⭐ OG' },
   };
   const s = map[status] || map.active;
-  return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>{s.label}</span>;
+  return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{s.label}</span>;
 }
 
 function FlagPill({ reason }) {
@@ -257,6 +260,7 @@ function Dashboard() {
   const openFlagCount = openFlags().length;
   const expiringCount = members.filter(m => m.status === 'expiring').length;
   const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
+  const ogCount = members.filter(m => m.status === 'og').length;
   const revenue = activeMembers.reduce((a, m) => {
     const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
   }, 0);
@@ -269,7 +273,9 @@ function Dashboard() {
 
   // Filtered members for the members page
   const filteredMembers = members.filter(m => {
-    const statusMatch = memberFilter === 'all' ? true : m.status === memberFilter;
+    const statusMatch = memberFilter === 'all' ? true :
+      memberFilter === 'visitors' ? ['walkin', 'frequent', 'og'].includes(m.status) :
+      m.status === memberFilter;
     const pkgMatch = pkgFilter === 'all' ? true : pkgFilter === 'none' ? (!m.pkg || m.pkg === '') : m.pkg === pkgFilter;
     return statusMatch && pkgMatch;
   });
@@ -678,6 +684,7 @@ function Dashboard() {
               { id: 'dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
               { id: 'newmembers', icon: 'ti-user-star', label: 'New Members', badge: newMembersData.filter(m => m.daysLeft <= 7).length },
               { id: 'members', icon: 'ti-users', label: 'Members' },
+              { id: 'walkins', icon: 'ti-walk', label: 'Walk-ins & Visitors' },
               { id: 'flags', icon: 'ti-flag', label: 'Flags', badge: openFlagCount },
               { id: 'packages', icon: 'ti-package', label: 'Packages' },
             ].map(item => (
@@ -729,7 +736,7 @@ function Dashboard() {
                     {[
                       { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
                       { label: 'Open Flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#A32D2D' : '#0F6E56', icon: 'ti-flag', bg: openFlagCount > 0 ? 'linear-gradient(135deg, #FFF0F0, #FCEBEB)' : 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
-                      { label: 'Expiring Soon', value: expiringCount, sub: 'Within 14 days', color: expiringCount > 0 ? '#854F0B' : '#888', icon: 'ti-clock', bg: expiringCount > 0 ? 'linear-gradient(135deg, #FFFBEB, #FAEEDA)' : 'linear-gradient(135deg, #F8F8F8, #F0F0F0)' },
+                      { label: '⭐ OGs', value: ogCount, sub: 'Long-time loyalists', color: '#92400E', icon: 'ti-award', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' },
                       { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: 'Active members only', color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                     ].map((m, i) => (
                       <div key={i} style={{ background: m.bg, borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(0,0,0,0.05)' }}>
@@ -892,6 +899,352 @@ function Dashboard() {
                 </div>
               )}
 
+              {/* Walk-ins & Visitors */}
+              {page === 'walkins' && (() => {
+                const [visitTab, setVisitTab] = useState('log');
+                const [visitForm, setVisitForm] = useState({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
+                const [visitSearch, setVisitSearch] = useState([]);
+                const [visitLogged, setVisitLogged] = useState(null);
+                const [todayVisits, setTodayVisits] = useState([]);
+                const [loadingVisits, setLoadingVisits] = useState(false);
+                const [addVisitorForm, setAddVisitorForm] = useState({ firstName: '', lastName: '', email: '', phone: '', status: 'walkin', notes: '' });
+                const [visitorAdded, setVisitorAdded] = useState(false);
+
+                const visitors = members.filter(m => ['walkin', 'frequent', 'og'].includes(m.status));
+                const ogMembers = members.filter(m => m.status === 'og');
+                const frequentVisitors = members.filter(m => m.status === 'frequent');
+                const walkIns = members.filter(m => m.status === 'walkin');
+
+                useEffect(() => {
+                  fetch('/api/visits?today=true').then(r => r.json()).then(d => setTodayVisits(Array.isArray(d) ? d : []));
+                }, []);
+
+                function searchVisitors(val) {
+                  setVisitForm(f => ({ ...f, memberSearch: val, memberId: '', memberName: val }));
+                  if (!val.trim()) { setVisitSearch([]); return; }
+                  const q = val.toLowerCase();
+                  setVisitSearch(members.filter(m => (fullName(m) + (m.email||'')).toLowerCase().includes(q)).slice(0, 6));
+                }
+
+                async function logVisit() {
+                  if (!visitForm.memberName.trim()) { alert('Enter a name'); return; }
+                  const res = await fetch('/api/visits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitForm) });
+                  const doc = await res.json();
+                  setVisitLogged(doc);
+                  setTodayVisits(prev => [doc, ...prev]);
+                  setVisitForm({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
+                  setVisitSearch([]);
+                  setTimeout(() => setVisitLogged(null), 4000);
+                }
+
+                async function addVisitor() {
+                  if (!addVisitorForm.firstName || !addVisitorForm.lastName) { alert('Name required'); return; }
+                  const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...addVisitorForm, createdAt: new Date() }) });
+                  const doc = await res.json();
+                  setMembers(prev => [...prev, doc]);
+                  setAddVisitorForm({ firstName: '', lastName: '', email: '', phone: '', status: 'walkin', notes: '' });
+                  setVisitorAdded(true);
+                  setTimeout(() => setVisitorAdded(false), 3000);
+                }
+
+                const rateOptions = [
+                  { key: 'walkin', label: 'Walk-in rate', amount: 95 },
+                  { key: 'member', label: 'Member rate', amount: 170 },
+                  { key: 'og', label: 'OG rate', amount: 153 },
+                  { key: 'comp', label: 'Comp (free)', amount: 0 },
+                ];
+
+                return (
+                  <div>
+                    <div style={S.pageHeader}>
+                      <div>
+                        <div style={S.pageTitle}>Walk-ins & Visitors</div>
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                          {todayVisits.length} visit{todayVisits.length !== 1 ? 's' : ''} logged today · ${todayVisits.reduce((a, v) => a + (v.rateCharged || 0), 0)} walk-in revenue
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+                      {[
+                        { label: '⭐ OGs', value: ogMembers.length, color: '#92400E', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)', desc: 'Long-time loyalists' },
+                        { label: '🔄 Frequent Visitors', value: frequentVisitors.length, color: '#7C3AED', bg: 'linear-gradient(135deg, #FDF4FF, #F3E8FF)', desc: 'Regulars, flexible' },
+                        { label: '🚶 Walk-ins', value: walkIns.length, color: '#4338CA', bg: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)', desc: 'One-offs & new faces' },
+                      ].map((s, i) => (
+                        <div key={i} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer' }} onClick={() => setVisitTab('roster')}>
+                          <div style={{ fontSize: 11, color: s.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
+                          <div style={{ fontSize: 11, color: s.color, opacity: 0.7 }}>{s.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tabs */}
+                    <div style={{ display: 'flex', gap: 2, marginBottom: 20, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
+                      {[
+                        { key: 'log', label: '📋 Log a Visit' },
+                        { key: 'today', label: `📅 Today (${todayVisits.length})` },
+                        { key: 'roster', label: '👥 Visitor Roster' },
+                        { key: 'add', label: '➕ Add Visitor' },
+                      ].map(t => (
+                        <button key={t.key} onClick={() => setVisitTab(t.key)} style={{ padding: '7px 16px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, border: 'none', background: visitTab === t.key ? '#fff' : 'transparent', color: visitTab === t.key ? '#1B8DB3' : '#888', boxShadow: visitTab === t.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none' }}>{t.label}</button>
+                      ))}
+                    </div>
+
+                    {/* Log a Visit */}
+                    {visitTab === 'log' && (
+                      <div style={{ maxWidth: 520 }}>
+                        {visitLogged && (
+                          <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontWeight: 600 }}>
+                            ✓ Visit logged for {visitLogged.memberName} — ${visitLogged.rateCharged}
+                          </div>
+                        )}
+                        <div style={S.card}>
+                          <div style={S.cardTitle}>Log Visit</div>
+
+                          {/* Member search */}
+                          <div style={{ ...S.formGroup, position: 'relative' }}>
+                            <label style={S.label}>Member / Visitor Name</label>
+                            <input style={S.input} value={visitForm.memberSearch} onChange={e => searchVisitors(e.target.value)} placeholder="Search or type name…" autoComplete="off" />
+                            {visitSearch.length > 0 && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 8, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 2 }}>
+                                {visitSearch.map(m => (
+                                  <div key={String(m._id)} onClick={() => { setVisitForm(f => ({ ...f, memberSearch: fullName(m), memberId: String(m._id), memberName: fullName(m), rateType: m.status === 'og' ? 'og' : m.status === 'frequent' ? 'member' : 'walkin', rateCharged: m.status === 'og' ? '153' : m.status === 'frequent' ? '170' : '95' })); setVisitSearch([]); }}
+                                    style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '0.5px solid #F5F5F5' }}>
+                                    <div style={{ ...S.avatar, width: 28, height: 28, fontSize: 10, flexShrink: 0, ...(m.status === 'og' ? { background: '#FEF3C7', color: '#92400E' } : {}) }}>{ini(m)}</div>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 600 }}>{fullName(m)}</div>
+                                      <div style={{ fontSize: 10, color: '#888' }}><StatusBadge status={m.status} /></div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Service */}
+                          <div style={S.formGroup}>
+                            <label style={S.label}>Service</label>
+                            <select style={S.input} value={visitForm.service} onChange={e => setVisitForm(f => ({ ...f, service: e.target.value }))}>
+                              <option>25-min Stretch Session</option>
+                              <option>25-min Massage</option>
+                              <option>25-min Combo</option>
+                            </select>
+                          </div>
+
+                          {/* Rate */}
+                          <div style={S.formGroup}>
+                            <label style={S.label}>Rate</label>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {rateOptions.map(r => (
+                                <button key={r.key} onClick={() => setVisitForm(f => ({ ...f, rateType: r.key, rateCharged: String(r.amount) }))} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: visitForm.rateType === r.key ? '#1B8DB3' : '#E0E6EB', background: visitForm.rateType === r.key ? '#EBF6FB' : '#fff', color: visitForm.rateType === r.key ? '#1B8DB3' : '#666' }}>
+                                  {r.label} {r.amount > 0 ? `$${r.amount}` : ''}
+                                </button>
+                              ))}
+                            </div>
+                            <input type="number" style={{ ...S.input, marginTop: 8 }} value={visitForm.rateCharged} onChange={e => setVisitForm(f => ({ ...f, rateCharged: e.target.value }))} placeholder="Custom amount" />
+                          </div>
+
+                          {/* Therapist + notes */}
+                          <div style={S.formRow}>
+                            <div style={S.formGroup}>
+                              <label style={S.label}>Therapist</label>
+                              <input style={S.input} value={visitForm.therapist} onChange={e => setVisitForm(f => ({ ...f, therapist: e.target.value }))} placeholder="Staff name" />
+                            </div>
+                            <div style={S.formGroup}>
+                              <label style={S.label}>Notes</label>
+                              <input style={S.input} value={visitForm.notes} onChange={e => setVisitForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
+                            </div>
+                          </div>
+
+                          <button onClick={logVisit} style={{ ...S.btnPrimary, width: '100%', justifyContent: 'center', padding: '12px', fontSize: 14, marginTop: 4 }}>
+                            ✓ Log Visit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Today's visits */}
+                    {visitTab === 'today' && (
+                      <div>
+                        {todayVisits.length === 0 ? (
+                          <div style={{ ...S.card, textAlign: 'center', padding: '40px' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                            <div style={{ fontSize: 14, color: '#888' }}>No visits logged today yet</div>
+                          </div>
+                        ) : (
+                          <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                            <table style={S.table}>
+                              <thead>
+                                <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
+                                  <th style={S.th}>Name</th>
+                                  <th style={S.th}>Service</th>
+                                  <th style={S.th}>Rate</th>
+                                  <th style={S.th}>Therapist</th>
+                                  <th style={S.th}>Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {todayVisits.map(v => (
+                                  <tr key={String(v._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                                    <td style={{ ...S.td, fontWeight: 600 }}>{v.memberName}</td>
+                                    <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{v.service}</td>
+                                    <td style={{ ...S.td, fontSize: 13, fontWeight: 700, color: '#1B8DB3' }}>${v.rateCharged}</td>
+                                    <td style={{ ...S.td, fontSize: 12, color: '#888' }}>{v.therapist || '—'}</td>
+                                    <td style={{ ...S.td, fontSize: 11, color: '#aaa' }}>{new Date(v.visitDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Visitor Roster */}
+                    {visitTab === 'roster' && (
+                      <div>
+                        {/* OGs first */}
+                        {ogMembers.length > 0 && (
+                          <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              ⭐ OGs <span style={{ fontSize: 12, fontWeight: 400, color: '#aaa' }}>Long-time loyalists</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {ogMembers.map(m => (
+                                <div key={String(m._id)} onClick={() => viewMember(m, 'walkins')} style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9E7)', border: '1px solid #FDE68A', borderLeft: '3px solid #92400E', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #FDE68A, #FCD34D)', color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700 }}>{ini(m)}</div>
+                                    <div>
+                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>⭐ {fullName(m)}</div>
+                                      <div style={{ fontSize: 11, color: '#A16207' }}>{m.email || m.phone || 'No contact info'}</div>
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: '#A16207' }}>{m.totalVisits ? `${m.totalVisits} visits` : ''}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Frequent Visitors */}
+                        {frequentVisitors.length > 0 && (
+                          <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#7C3AED', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              🔄 Frequent Visitors <span style={{ fontSize: 12, fontWeight: 400, color: '#aaa' }}>Regulars, no commitment</span>
+                            </div>
+                            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                              <table style={S.table}>
+                                <thead>
+                                  <tr style={{ background: '#FAF5FF' }}>
+                                    <th style={S.th}>Name</th>
+                                    <th style={S.th}>Contact</th>
+                                    <th style={S.th}>Visits</th>
+                                    <th style={S.th}>Last Visit</th>
+                                    <th style={S.th}></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {frequentVisitors.map(m => (
+                                    <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                                      <td style={S.td}><div style={{ fontWeight: 600 }}>{fullName(m)}</div></td>
+                                      <td style={{ ...S.td, fontSize: 11, color: '#888' }}>{m.email || m.phone || '—'}</td>
+                                      <td style={{ ...S.td, fontSize: 13, fontWeight: 700, color: '#7C3AED' }}>{m.totalVisits || '—'}</td>
+                                      <td style={{ ...S.td, fontSize: 11, color: '#888' }}>{m.daysSinceLastAppt != null ? `${m.daysSinceLastAppt}d ago` : '—'}</td>
+                                      <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'walkins')}>View →</span></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Walk-ins */}
+                        {walkIns.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#4338CA', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              🚶 Walk-ins <span style={{ fontSize: 12, fontWeight: 400, color: '#aaa' }}>One-offs & new faces</span>
+                            </div>
+                            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                              <table style={S.table}>
+                                <thead>
+                                  <tr style={{ background: '#EEF2FF' }}>
+                                    <th style={S.th}>Name</th>
+                                    <th style={S.th}>Contact</th>
+                                    <th style={S.th}>Last Visit</th>
+                                    <th style={S.th}></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {walkIns.map(m => (
+                                    <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                                      <td style={S.td}><div style={{ fontWeight: 600 }}>{fullName(m)}</div></td>
+                                      <td style={{ ...S.td, fontSize: 11, color: '#888' }}>{m.email || m.phone || '—'}</td>
+                                      <td style={{ ...S.td, fontSize: 11, color: '#888' }}>{m.daysSinceLastAppt != null ? `${m.daysSinceLastAppt}d ago` : '—'}</td>
+                                      <td style={S.td}><span style={S.alink} onClick={() => viewMember(m, 'walkins')}>View →</span></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {visitors.length === 0 && (
+                          <div style={{ ...S.card, textAlign: 'center', padding: '40px' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
+                            <div style={{ fontSize: 14, color: '#888' }}>No visitors in the system yet</div>
+                            <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>Use the Add Visitor tab to add OGs and regulars</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Add Visitor */}
+                    {visitTab === 'add' && (
+                      <div style={{ maxWidth: 520 }}>
+                        {visitorAdded && (
+                          <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontWeight: 600 }}>
+                            ✓ Visitor added to the system!
+                          </div>
+                        )}
+                        <div style={S.card}>
+                          <div style={S.cardTitle}>Add Visitor to System</div>
+                          <div style={S.formRow}>
+                            <div style={S.formGroup}><label style={S.label}>First name</label><input style={S.input} value={addVisitorForm.firstName} onChange={e => setAddVisitorForm(f => ({ ...f, firstName: e.target.value }))} placeholder="John" /></div>
+                            <div style={S.formGroup}><label style={S.label}>Last name</label><input style={S.input} value={addVisitorForm.lastName} onChange={e => setAddVisitorForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Smith" /></div>
+                          </div>
+                          <div style={S.formRow}>
+                            <div style={S.formGroup}><label style={S.label}>Email</label><input style={S.input} type="email" value={addVisitorForm.email} onChange={e => setAddVisitorForm(f => ({ ...f, email: e.target.value }))} placeholder="john@email.com" /></div>
+                            <div style={S.formGroup}><label style={S.label}>Phone</label><input style={S.input} value={addVisitorForm.phone} onChange={e => setAddVisitorForm(f => ({ ...f, phone: e.target.value }))} placeholder="(617) 555-0100" /></div>
+                          </div>
+                          <div style={S.formGroup}>
+                            <label style={S.label}>Category</label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              {[
+                                { key: 'walkin', label: '🚶 Walk-in', color: '#4338CA' },
+                                { key: 'frequent', label: '🔄 Frequent Visitor', color: '#7C3AED' },
+                                { key: 'og', label: '⭐ OG', color: '#92400E' },
+                              ].map(c => (
+                                <button key={c.key} onClick={() => setAddVisitorForm(f => ({ ...f, status: c.key }))} style={{ flex: 1, padding: '10px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: addVisitorForm.status === c.key ? c.color : '#E0E6EB', background: addVisitorForm.status === c.key ? c.color + '15' : '#fff', color: addVisitorForm.status === c.key ? c.color : '#666' }}>
+                                  {c.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={S.formGroup}><label style={S.label}>Notes</label><textarea style={{ ...S.input, resize: 'vertical' }} rows={2} value={addVisitorForm.notes} onChange={e => setAddVisitorForm(f => ({ ...f, notes: e.target.value }))} placeholder="How they found us, preferences, etc." /></div>
+                          <button onClick={addVisitor} style={{ ...S.btnPrimary, width: '100%', justifyContent: 'center', padding: '11px', fontSize: 14 }}>
+                            Add to System
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Members */}
               {page === 'members' && (
                 <div>
@@ -906,6 +1259,7 @@ function Dashboard() {
                       { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
                       { key: 'paused', label: `Paused (${members.filter(m => m.status === 'paused').length})` },
                       { key: 'expiring', label: `Expiring (${members.filter(m => m.status === 'expiring').length})` },
+                      { key: 'visitors', label: `Visitors (${members.filter(m => ['walkin','frequent','og'].includes(m.status)).length})` },
                       { key: 'all', label: `All (${members.length})` },
                     ].map(f => (
                       <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s', background: memberFilter === f.key ? '#1B8DB3' : '#fff', color: memberFilter === f.key ? '#fff' : '#666', border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd', boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none' }}>{f.label}</button>
@@ -1247,6 +1601,8 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button style={S.btnSm} onClick={() => updateMember(m, { status: 'active' })}><i className="ti ti-check" />Mark active</button>
         <button style={S.btnSm} onClick={() => updateMember(m, { status: 'paused' })}><i className="ti ti-pause" />Pause</button>
+        <button style={{ ...S.btnSm, color: '#92400E', borderColor: '#FDE68A' }} onClick={() => updateMember(m, { status: 'og' })}>⭐ Mark OG</button>
+        <button style={{ ...S.btnSm, color: '#7C3AED', borderColor: '#E9D5FF' }} onClick={() => updateMember(m, { status: 'frequent' })}>🔄 Frequent Visitor</button>
         <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => removeMember(m)}><i className="ti ti-trash" />Remove</button>
       </div>
     </div>
