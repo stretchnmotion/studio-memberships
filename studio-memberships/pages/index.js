@@ -319,11 +319,29 @@ function Dashboard() {
 
     // ── Tab 1: Package Assignment ─────────────────────────────────────────
     function AssignTab() {
-      const unassigned = members.filter(m => !m.pkg || m.pkg === '');
+      // Only show unassigned members who visited within 60 days — everyone else is auto-inactive
+      const allUnassigned = members.filter(m => !m.pkg || m.pkg === '');
+      const unassigned = allUnassigned.filter(m => m.daysSinceLastAppt == null || m.daysSinceLastAppt <= 60);
+      const autoInactive = allUnassigned.filter(m => m.daysSinceLastAppt != null && m.daysSinceLastAppt > 60);
       const [idx, setIdx] = useState(0);
       const [selectedPkg, setSelectedPkg] = useState('');
       const [done, setDone] = useState(0);
       const [skipped, setSkipped] = useState(0);
+      const [autoCleaning, setAutoCleaning] = useState(false);
+      const [autoCleaned, setAutoCleaned] = useState(false);
+
+      async function runAutoClean() {
+        setAutoCleaning(true);
+        // Bulk mark all 60+ day no-package members as inactive
+        await Promise.all(autoInactive.map(m =>
+          fetch('/api/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...m, status: 'inactive' }) })
+        ));
+        setMembers(prev => prev.map(m =>
+          autoInactive.find(x => String(x._id) === String(m._id)) ? { ...m, status: 'inactive' } : m
+        ));
+        setAutoCleaned(true);
+        setAutoCleaning(false);
+      }
 
       const current = unassigned[idx];
       const total = unassigned.length;
@@ -353,7 +371,24 @@ function Dashboard() {
 
       return (
         <div>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped</div>
+          {/* Auto-clean banner */}
+          {!autoCleaned && autoInactive.length > 0 && (
+            <div style={{ background: 'linear-gradient(135deg, #FFF7ED, #FEE2C0)', border: '1px solid #FCD34D', borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#92400E' }}>⚡ {autoInactive.length} records can be auto-cleared</div>
+                <div style={{ fontSize: 12, color: '#A16207', marginTop: 2 }}>No package + last visit over 60 days ago — almost certainly not current members</div>
+              </div>
+              <button onClick={runAutoClean} disabled={autoCleaning} style={{ ...S.btnPrimary, fontSize: 13, background: 'linear-gradient(135deg, #92400E, #78350F)' }}>
+                {autoCleaning ? '⏳ Cleaning…' : `⚡ Auto-clear ${autoInactive.length}`}
+              </button>
+            </div>
+          )}
+          {autoCleaned && (
+            <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontWeight: 600 }}>
+              ✓ {autoInactive.length} inactive records cleared automatically
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>{idx} of {total} reviewed · {done} assigned · {skipped} skipped · showing members active within 60 days</div>
           <div style={{ height: 6, background: '#E8F4F8', borderRadius: 3, marginBottom: 24, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1B8DB3, #0d6a8a)', borderRadius: 3, transition: 'width 0.4s ease' }} />
           </div>
