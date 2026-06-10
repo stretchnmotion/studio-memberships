@@ -322,7 +322,7 @@ function Dashboard() {
       // Only show unassigned members who visited within 60 days — everyone else is auto-inactive
       const allUnassigned = members.filter(m => !m.pkg || m.pkg === '');
       const unassigned = allUnassigned.filter(m => m.daysSinceLastAppt == null || m.daysSinceLastAppt <= 60);
-      const autoInactive = allUnassigned.filter(m => m.daysSinceLastAppt != null && m.daysSinceLastAppt > 60);
+      const autoInactive = allUnassigned.filter(m => m.daysSinceLastAppt != null && m.daysSinceLastAppt > 60 && m.status !== 'inactive');
       const [idx, setIdx] = useState(0);
       const [selectedPkg, setSelectedPkg] = useState('');
       const [done, setDone] = useState(0);
@@ -334,6 +334,7 @@ function Dashboard() {
         setAutoCleaning(true);
         const ids = autoInactive.map(m => String(m._id));
         await fetch('/api/members', {
+        console.log("auto-clean ids:", ids.length, ids.slice(0, 3));
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { status: 'inactive' } }),
