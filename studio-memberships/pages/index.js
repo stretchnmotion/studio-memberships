@@ -333,8 +333,8 @@ function Dashboard() {
       async function runAutoClean() {
         setAutoCleaning(true);
         const ids = autoInactive.map(m => String(m._id));
-        await fetch('/api/members/bulk-update', {
-          method: 'POST',
+        await fetch('/api/members', {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { status: 'inactive' } }),
         });
