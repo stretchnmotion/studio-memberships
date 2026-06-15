@@ -1219,7 +1219,7 @@ function Dashboard() {
 
 function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
   const [visitTab, setVisitTab] = useState('log');
-  const [visitForm, setVisitForm] = useState({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
+  const [visitForm, setVisitForm] = useState({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
   const [visitSearch, setVisitSearch] = useState([]);
   const [visitLogged, setVisitLogged] = useState(null);
   const [todayVisits, setTodayVisits] = useState([]);
@@ -1251,7 +1251,7 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     const doc = await res.json();
     setVisitLogged(doc);
     setTodayVisits(prev => [doc, ...prev]);
-    setVisitForm({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
+    setVisitForm({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
     setVisitSearch([]);
     setTimeout(() => setVisitLogged(null), 4000);
   }
@@ -1266,12 +1266,21 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     setTimeout(() => setVisitorAdded(false), 3000);
   }
 
-  const rateOptions = [
-    { key: 'walkin', label: 'Walk-in', amount: 95 },
+  const rateOptions25 = [
+    { key: 'walkin', label: '25-min Walk-in', amount: 95 },
     { key: 'member', label: 'Member rate', amount: 170 },
     { key: 'og', label: 'OG rate', amount: 153 },
     { key: 'comp', label: 'Comp', amount: 0 },
   ];
+
+  const rateOptions50 = [
+    { key: 'walkin', label: '50-min Walk-in', amount: 80 },
+    { key: 'walkin_premium', label: '50-min (premium)', amount: 95 },
+    { key: 'member', label: 'Member rate', amount: 170 },
+    { key: 'comp', label: 'Comp', amount: 0 },
+  ];
+
+  const rateOptions = visitForm.duration === '50' ? rateOptions50 : rateOptions25;
 
   const todayRevenue = todayVisits.reduce((a, v) => a + (v.rateCharged || 0), 0);
 
@@ -1341,13 +1350,28 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
                 </div>
               )}
             </div>
-            <div style={S.formGroup}>
-              <label style={S.label}>Service</label>
-              <select style={S.input} value={visitForm.service} onChange={e => setVisitForm(f => ({ ...f, service: e.target.value }))}>
-                <option>25-min Stretch Session</option>
-                <option>25-min Massage</option>
-                <option>25-min Combo</option>
-              </select>
+            <div style={S.formRow}>
+              <div style={S.formGroup}>
+                <label style={S.label}>Session Length</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['25', '50'].map(d => (
+                    <button key={d} onClick={() => {
+                      const defaultRate = d === '50' ? '80' : '95';
+                      setVisitForm(f => ({ ...f, duration: d, rateType: 'walkin', rateCharged: defaultRate, service: `${d}-min Stretch Session` }));
+                    }} style={{ flex: 1, padding: '9px 8px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: visitForm.duration === d ? '#1B8DB3' : '#E0E6EB', background: visitForm.duration === d ? '#EBF6FB' : '#fff', color: visitForm.duration === d ? '#1B8DB3' : '#666' }}>
+                      {d} min
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={S.formGroup}>
+                <label style={S.label}>Service Type</label>
+                <select style={S.input} value={visitForm.service} onChange={e => setVisitForm(f => ({ ...f, service: e.target.value }))}>
+                  <option>{visitForm.duration}-min Stretch Session</option>
+                  <option>{visitForm.duration}-min Massage</option>
+                  <option>{visitForm.duration}-min Combo</option>
+                </select>
+              </div>
             </div>
             <div style={S.formGroup}>
               <label style={S.label}>Rate</label>
