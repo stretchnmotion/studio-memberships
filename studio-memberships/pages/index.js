@@ -113,6 +113,7 @@ function Dashboard() {
   const [nmSuccess, setNmSuccess] = useState(false);
   const [importMsg, setImportMsg] = useState('');
   const [newMembersData, setNewMembersData] = useState([]);
+  const [walkInRevenueMonth, setWalkInRevenueMonth] = useState(0);
   const [commitmentChecking, setCommitmentChecking] = useState(false);
   const [loading, setLoading] = useState(true);
   const fileRef = useRef();
@@ -128,18 +129,28 @@ function Dashboard() {
     if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchDrop(false);
   }
 
+  function calcMonthWalkInRevenue(visits) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return visits
+      .filter(v => new Date(v.visitDate) >= monthStart)
+      .reduce((a, v) => a + (v.rateCharged || 0), 0);
+  }
+
   async function fetchAll() {
     setLoading(true);
     try {
-      const [mr, fr, nm] = await Promise.all([
+      const [mr, fr, nm, vr] = await Promise.all([
         fetch('/api/members'),
         fetch('/api/flags'),
         fetch('/api/members/commitment-check'),
+        fetch('/api/visits'),
       ]);
-      const [md, fd, nmd] = await Promise.all([mr.json(), fr.json(), nm.json()]);
+      const [md, fd, nmd, vd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json()]);
       setMembers(Array.isArray(md) ? md : []);
       setFlags(Array.isArray(fd) ? fd : []);
       setNewMembersData(Array.isArray(nmd) ? nmd : []);
+      setWalkInRevenueMonth(calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []));
     } catch (e) { console.error(e); }
     setLoading(false);
   }
@@ -147,15 +158,17 @@ function Dashboard() {
   // Silent refresh — updates data in background without loading flash
   async function refreshSilent() {
     try {
-      const [mr, fr, nm] = await Promise.all([
+      const [mr, fr, nm, vr] = await Promise.all([
         fetch('/api/members'),
         fetch('/api/flags'),
         fetch('/api/members/commitment-check'),
+        fetch('/api/visits'),
       ]);
-      const [md, fd, nmd] = await Promise.all([mr.json(), fr.json(), nm.json()]);
+      const [md, fd, nmd, vd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json()]);
       setMembers(Array.isArray(md) ? md : []);
       setFlags(Array.isArray(fd) ? fd : []);
       setNewMembersData(Array.isArray(nmd) ? nmd : []);
+      setWalkInRevenueMonth(calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []));
     } catch (e) { console.error(e); }
   }
 
@@ -261,9 +274,10 @@ function Dashboard() {
   const expiringCount = members.filter(m => m.status === 'expiring').length;
   const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
   const ogCount = members.filter(m => m.status === 'og').length;
-  const revenue = activeMembers.reduce((a, m) => {
+  const membershipRevenue = activeMembers.reduce((a, m) => {
     const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
   }, 0);
+  const revenue = membershipRevenue + walkInRevenueMonth;
 
   // Package tier breakdown
   const tierBreakdown = packages.map(p => ({
@@ -776,7 +790,7 @@ function Dashboard() {
                       { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
                       { label: 'Open Flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#A32D2D' : '#0F6E56', icon: 'ti-flag', bg: openFlagCount > 0 ? 'linear-gradient(135deg, #FFF0F0, #FCEBEB)' : 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                       { label: '⭐ OGs', value: ogCount, sub: 'Long-time loyalists', color: '#92400E', icon: 'ti-award', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' },
-                      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: 'Active members only', color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
+                      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: `Memberships + $${walkInRevenueMonth.toLocaleString()} walk-ins`, color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                     ].map((m, i) => (
                       <div key={i} style={{ background: m.bg, borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(0,0,0,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -939,7 +953,7 @@ function Dashboard() {
               )}
 
               {/* Walk-ins & Visitors */}
-              {page === 'walkins' && <WalkInsPage members={members} setMembers={setMembers} packages={packages} viewMember={viewMember} styles={S} />}
+              {page === 'walkins' && <WalkInsPage members={members} setMembers={setMembers} packages={packages} viewMember={viewMember} styles={S} refreshDashboard={refreshSilent} />}
 
               {/* Members */}
               {/* Members */}
@@ -1218,7 +1232,7 @@ function Dashboard() {
 }
 
 
-function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
+function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, refreshDashboard }) {
   const [visitTab, setVisitTab] = useState('log');
   const [visitForm, setVisitForm] = useState({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
   const [visitSearch, setVisitSearch] = useState([]);
@@ -1276,6 +1290,7 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     setVisitForm({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
     setVisitSearch([]);
     setTimeout(() => setVisitLogged(null), 4000);
+    if (refreshDashboard) refreshDashboard();
   }
 
   function startEdit(v) {
@@ -1288,12 +1303,14 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     setAllVisits(prev => prev.map(v => String(v._id) === String(editForm._id) ? { ...editForm, rateCharged: parseFloat(editForm.rateCharged) || 0 } : v));
     setEditingVisit(null);
     setEditForm(null);
+    if (refreshDashboard) refreshDashboard();
   }
 
   async function deleteVisit(id) {
     if (!confirm('Delete this visit log entry? This cannot be undone.')) return;
     await fetch(`/api/visits?id=${id}`, { method: 'DELETE' });
     setAllVisits(prev => prev.filter(v => String(v._id) !== String(id)));
+    if (refreshDashboard) refreshDashboard();
   }
 
   async function addVisitor() {
@@ -1394,9 +1411,9 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
                 <label style={S.label}>Session Length</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['25', '50'].map(d => (
-                    <button key={d} onClick={() => {
+                    <button key={d} type="button" onClick={() => {
                       const defaultRate = d === '50' ? '80' : '95';
-                      setVisitForm(f => ({ ...f, duration: d, rateType: 'walkin', rateCharged: defaultRate, service: `${d}-min Stretch Session` }));
+                      setVisitForm(f => ({ ...f, duration: d, service: `${d}-min Stretch Session`, rateType: 'walkin', rateCharged: defaultRate }));
                     }} style={{ flex: 1, padding: '9px 8px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: visitForm.duration === d ? '#1B8DB3' : '#E0E6EB', background: visitForm.duration === d ? '#EBF6FB' : '#fff', color: visitForm.duration === d ? '#1B8DB3' : '#666' }}>
                       {d} min
                     </button>
@@ -1416,7 +1433,7 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
               <label style={S.label}>Rate</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                 {rateOptions.map(r => (
-                  <button key={r.key} onClick={() => setVisitForm(f => ({ ...f, rateType: r.key, rateCharged: String(r.amount) }))} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: visitForm.rateType === r.key ? '#1B8DB3' : '#E0E6EB', background: visitForm.rateType === r.key ? '#EBF6FB' : '#fff', color: visitForm.rateType === r.key ? '#1B8DB3' : '#666' }}>
+                  <button key={r.key} type="button" onClick={() => setVisitForm(f => ({ ...f, rateType: r.key, rateCharged: String(r.amount) }))} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', border: '1.5px solid', borderColor: visitForm.rateType === r.key ? '#1B8DB3' : '#E0E6EB', background: visitForm.rateType === r.key ? '#EBF6FB' : '#fff', color: visitForm.rateType === r.key ? '#1B8DB3' : '#666' }}>
                     {r.label} {r.amount > 0 ? `$${r.amount}` : ''}
                   </button>
                 ))}
