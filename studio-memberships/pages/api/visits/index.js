@@ -1,8 +1,11 @@
 // pages/api/visits/index.js
 // Log walk-in visits and retrieve visit history
-// GET  /api/visits?memberId=xxx   — get visits for a member
-// GET  /api/visits?today=true     — get all visits today
-// POST /api/visits                — log a new visit
+// GET    /api/visits?memberId=xxx   — get visits for a member
+// GET    /api/visits?today=true     — get all visits today
+// GET    /api/visits                — get all visits (most recent 200)
+// POST   /api/visits                — log a new visit
+// PUT    /api/visits                — edit an existing visit
+// DELETE /api/visits?id=xxx         — delete a visit
 
 import clientPromise from '../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
@@ -27,7 +30,7 @@ export default async function handler(req, res) {
         query.visitDate = { $gte: start, $lte: end };
       }
 
-      const result = await visits.find(query).sort({ visitDate: -1 }).limit(100).toArray();
+      const result = await visits.find(query).sort({ visitDate: -1 }).limit(200).toArray();
       return res.status(200).json(result);
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -40,8 +43,9 @@ export default async function handler(req, res) {
         memberId,
         memberName,
         service,
+        duration,
         rateCharged,
-        rateType,  // 'walkin' | 'member' | 'og' | 'comp'
+        rateType,
         therapist,
         notes,
       } = req.body;
@@ -50,6 +54,7 @@ export default async function handler(req, res) {
         memberId: memberId || null,
         memberName: memberName || 'Unknown',
         service: service || '25-min Stretch Session',
+        duration: duration || '25',
         rateCharged: parseFloat(rateCharged) || 0,
         rateType: rateType || 'walkin',
         therapist: therapist || '',
@@ -59,7 +64,6 @@ export default async function handler(req, res) {
 
       const result = await visits.insertOne(visit);
 
-      // Update member's visit count and last visit date if tied to a member
       if (memberId && ObjectId.isValid(memberId)) {
         await db.collection('members').updateOne(
           { _id: new ObjectId(memberId) },
@@ -71,6 +75,32 @@ export default async function handler(req, res) {
       }
 
       return res.status(201).json({ ...visit, _id: result.insertedId });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  if (req.method === 'PUT') {
+    try {
+      const { _id, ...update } = req.body;
+      if (!_id) return res.status(400).json({ error: 'Missing _id' });
+      delete update._id;
+      await visits.updateOne(
+        { _id: new ObjectId(String(_id)) },
+        { $set: { ...update, rateCharged: parseFloat(update.rateCharged) || 0 } }
+      );
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    try {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: 'Missing id' });
+      await visits.deleteOne({ _id: new ObjectId(String(id)) });
+      return res.status(200).json({ ok: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
