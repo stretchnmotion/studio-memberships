@@ -348,7 +348,6 @@ function Dashboard() {
         setAutoCleaning(true);
         const ids = autoInactive.map(m => String(m._id));
         await fetch('/api/members', {
-        console.log("auto-clean ids:", ids.length, ids.slice(0, 3));
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { status: 'inactive' } }),
