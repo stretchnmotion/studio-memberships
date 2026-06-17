@@ -1217,12 +1217,16 @@ function Dashboard() {
   );
 }
 
+
 function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
   const [visitTab, setVisitTab] = useState('log');
   const [visitForm, setVisitForm] = useState({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
   const [visitSearch, setVisitSearch] = useState([]);
   const [visitLogged, setVisitLogged] = useState(null);
-  const [todayVisits, setTodayVisits] = useState([]);
+  const [allVisits, setAllVisits] = useState([]);
+  const [loadingVisits, setLoadingVisits] = useState(true);
+  const [editingVisit, setEditingVisit] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const [addVisitorForm, setAddVisitorForm] = useState({ firstName: '', lastName: '', email: '', phone: '', status: 'walkin', notes: '' });
   const [visitorAdded, setVisitorAdded] = useState(false);
 
@@ -1231,12 +1235,30 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
   const frequentVisitors = members.filter(m => m.status === 'frequent');
   const walkIns = members.filter(m => m.status === 'walkin');
 
-  useEffect(() => {
-    fetch('/api/visits?today=true').then(r => r.json()).then(d => setTodayVisits(Array.isArray(d) ? d : [])).catch(() => {});
-  }, []);
-
   function ini(m) { return ((m.firstName||'?')[0] + (m.lastName||'?')[0]).toUpperCase(); }
   function fullName(m) { return `${m.firstName} ${m.lastName}`; }
+
+  async function loadVisits() {
+    setLoadingVisits(true);
+    try {
+      const res = await fetch('/api/visits');
+      const data = await res.json();
+      setAllVisits(Array.isArray(data) ? data : []);
+    } catch {}
+    setLoadingVisits(false);
+  }
+
+  useEffect(() => { loadVisits(); }, []);
+
+  // Today's visits derived from allVisits — always accurate, no separate fetch needed
+  const todayVisits = allVisits.filter(v => {
+    const d = new Date(v.visitDate);
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  });
+
+  const todayRevenue = todayVisits.reduce((a, v) => a + (v.rateCharged || 0), 0);
+  const allTimeRevenue = allVisits.reduce((a, v) => a + (v.rateCharged || 0), 0);
 
   function searchVisitors(val) {
     setVisitForm(f => ({ ...f, memberSearch: val, memberId: '', memberName: val }));
@@ -1250,10 +1272,28 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     const res = await fetch('/api/visits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitForm) });
     const doc = await res.json();
     setVisitLogged(doc);
-    setTodayVisits(prev => [doc, ...prev]);
+    setAllVisits(prev => [doc, ...prev]);
     setVisitForm({ memberSearch: '', memberId: '', memberName: '', service: '25-min Stretch Session', duration: '25', rateCharged: '95', rateType: 'walkin', therapist: '', notes: '' });
     setVisitSearch([]);
     setTimeout(() => setVisitLogged(null), 4000);
+  }
+
+  function startEdit(v) {
+    setEditingVisit(v._id);
+    setEditForm({ ...v, rateCharged: String(v.rateCharged) });
+  }
+
+  async function saveEdit() {
+    await fetch('/api/visits', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm) });
+    setAllVisits(prev => prev.map(v => String(v._id) === String(editForm._id) ? { ...editForm, rateCharged: parseFloat(editForm.rateCharged) || 0 } : v));
+    setEditingVisit(null);
+    setEditForm(null);
+  }
+
+  async function deleteVisit(id) {
+    if (!confirm('Delete this visit log entry? This cannot be undone.')) return;
+    await fetch(`/api/visits?id=${id}`, { method: 'DELETE' });
+    setAllVisits(prev => prev.filter(v => String(v._id) !== String(id)));
   }
 
   async function addVisitor() {
@@ -1272,49 +1312,48 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
     { key: 'og', label: 'OG rate', amount: 153 },
     { key: 'comp', label: 'Comp', amount: 0 },
   ];
-
   const rateOptions50 = [
     { key: 'walkin', label: '50-min Walk-in', amount: 80 },
     { key: 'walkin_premium', label: '50-min (premium)', amount: 95 },
     { key: 'member', label: 'Member rate', amount: 170 },
     { key: 'comp', label: 'Comp', amount: 0 },
   ];
-
   const rateOptions = visitForm.duration === '50' ? rateOptions50 : rateOptions25;
-
-  const todayRevenue = todayVisits.reduce((a, v) => a + (v.rateCharged || 0), 0);
+  const editRateOptions = editForm?.duration === '50' ? rateOptions50 : rateOptions25;
 
   return (
     <div>
       <div style={S.pageHeader}>
         <div>
           <div style={S.pageTitle}>Walk-ins & Visitors</div>
-          <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-            {todayVisits.length} visit{todayVisits.length !== 1 ? 's' : ''} today · ${todayRevenue} walk-in revenue
-          </div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Log visits, track cash, manage your regulars</div>
         </div>
       </div>
 
-      {/* Category cards */}
+      {/* Persistent cash tally — always visible at top */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: '⭐ OGs', value: ogMembers.length, color: '#92400E', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)', desc: 'Long-time loyalists' },
-          { label: '🔄 Frequent Visitors', value: frequentVisitors.length, color: '#7C3AED', bg: 'linear-gradient(135deg, #FDF4FF, #F3E8FF)', desc: 'Regulars, flexible' },
-          { label: '🚶 Walk-ins', value: walkIns.length, color: '#4338CA', bg: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)', desc: 'One-offs & new faces' },
-        ].map((s, i) => (
-          <div key={i} onClick={() => setVisitTab('roster')} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer' }}>
-            <div style={{ fontSize: 11, color: s.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: s.color, opacity: 0.7 }}>{s.desc}</div>
-          </div>
-        ))}
+        <div style={{ background: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)', borderRadius: 12, padding: '16px 18px', border: '1px solid #A7F3D0' }}>
+          <div style={{ fontSize: 11, color: '#047857', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>💵 Today's Cash Tally</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#047857' }}>${todayRevenue}</div>
+          <div style={{ fontSize: 11, color: '#047857', opacity: 0.7 }}>{todayVisits.length} visit{todayVisits.length !== 1 ? 's' : ''} logged today</div>
+        </div>
+        <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', borderRadius: 12, padding: '16px 18px', border: '1px solid #B5D4E4' }}>
+          <div style={{ fontSize: 11, color: '#1B8DB3', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>All-Time Walk-in Revenue</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#1B8DB3' }}>${allTimeRevenue.toLocaleString()}</div>
+          <div style={{ fontSize: 11, color: '#1B8DB3', opacity: 0.7 }}>{allVisits.length} total visits logged</div>
+        </div>
+        <div style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)', borderRadius: 12, padding: '16px 18px', border: '1px solid #FDE68A' }}>
+          <div style={{ fontSize: 11, color: '#92400E', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Visitors in System</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: '#92400E' }}>{visitors.length}</div>
+          <div style={{ fontSize: 11, color: '#92400E', opacity: 0.7 }}>{ogMembers.length} OG · {frequentVisitors.length} frequent · {walkIns.length} walk-in</div>
+        </div>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 20, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
         {[
           { key: 'log', label: '📋 Log a Visit' },
-          { key: 'today', label: `📅 Today (${todayVisits.length})` },
+          { key: 'history', label: `🧾 Visit Log (${allVisits.length})` },
           { key: 'roster', label: '👥 Visitor Roster' },
           { key: 'add', label: '➕ Add Visitor' },
         ].map(t => (
@@ -1338,7 +1377,7 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
               {visitSearch.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 8, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 2 }}>
                   {visitSearch.map(m => (
-                    <div key={String(m._id)} onClick={() => { setVisitForm(f => ({ ...f, memberSearch: fullName(m), memberId: String(m._id), memberName: fullName(m), rateType: m.status === 'og' ? 'og' : m.status === 'frequent' ? 'member' : 'walkin', rateCharged: m.status === 'og' ? '153' : m.status === 'frequent' ? '170' : '95' })); setVisitSearch([]); }}
+                    <div key={String(m._id)} onClick={() => { setVisitForm(f => ({ ...f, memberSearch: fullName(m), memberId: String(m._id), memberName: fullName(m), rateType: m.status === 'og' ? 'og' : m.status === 'frequent' ? 'member' : 'walkin', rateCharged: m.status === 'og' ? '153' : m.status === 'frequent' ? '170' : (f.duration === '50' ? '80' : '95') })); setVisitSearch([]); }}
                       style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '0.5px solid #F5F5F5' }}>
                       <div style={{ width: 28, height: 28, borderRadius: '50%', background: m.status === 'og' ? '#FEF3C7' : '#D6EEF7', color: m.status === 'og' ? '#92400E' : '#1B8DB3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{ini(m)}</div>
                       <div>
@@ -1401,31 +1440,58 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S }) {
         </div>
       )}
 
-      {/* Today's visits */}
-      {visitTab === 'today' && (
+      {/* Visit Log — all visits, editable */}
+      {visitTab === 'history' && (
         <div>
-          {todayVisits.length === 0 ? (
+          {loadingVisits ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>Loading visit log…</div>
+          ) : allVisits.length === 0 ? (
             <div style={{ ...S.card, textAlign: 'center', padding: '40px' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-              <div style={{ fontSize: 14, color: '#888' }}>No visits logged today yet</div>
+              <div style={{ fontSize: 14, color: '#888' }}>No visits logged yet</div>
             </div>
           ) : (
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <table style={S.table}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
-                    <th style={S.th}>Name</th><th style={S.th}>Service</th><th style={S.th}>Rate</th><th style={S.th}>Therapist</th><th style={S.th}>Time</th>
+                    <th style={S.th}>Name</th><th style={S.th}>Service</th><th style={S.th}>Rate</th><th style={S.th}>Therapist</th><th style={S.th}>Date</th><th style={S.th}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {todayVisits.map(v => (
-                    <tr key={String(v._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
-                      <td style={{ ...S.td, fontWeight: 600 }}>{v.memberName}</td>
-                      <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{v.service}</td>
-                      <td style={{ ...S.td, fontSize: 13, fontWeight: 700, color: '#1B8DB3' }}>${v.rateCharged}</td>
-                      <td style={{ ...S.td, fontSize: 12, color: '#888' }}>{v.therapist || '—'}</td>
-                      <td style={{ ...S.td, fontSize: 11, color: '#aaa' }}>{new Date(v.visitDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</td>
-                    </tr>
+                  {allVisits.map(v => (
+                    editingVisit === String(v._id) ? (
+                      <tr key={String(v._id)} style={{ background: '#FFFBEB' }}>
+                        <td style={S.td} colSpan={6}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '6px 0' }}>
+                            <input style={{ ...S.input, width: 140 }} value={editForm.memberName} onChange={e => setEditForm(f => ({ ...f, memberName: e.target.value }))} placeholder="Name" />
+                            <select style={{ ...S.input, width: 110 }} value={editForm.duration} onChange={e => setEditForm(f => ({ ...f, duration: e.target.value, service: `${e.target.value}-min Stretch Session` }))}>
+                              <option value="25">25 min</option>
+                              <option value="50">50 min</option>
+                            </select>
+                            <input style={{ ...S.input, width: 160 }} value={editForm.service} onChange={e => setEditForm(f => ({ ...f, service: e.target.value }))} placeholder="Service" />
+                            <input type="number" style={{ ...S.input, width: 90 }} value={editForm.rateCharged} onChange={e => setEditForm(f => ({ ...f, rateCharged: e.target.value }))} placeholder="Rate" />
+                            <input style={{ ...S.input, width: 110 }} value={editForm.therapist} onChange={e => setEditForm(f => ({ ...f, therapist: e.target.value }))} placeholder="Therapist" />
+                            <button onClick={saveEdit} style={{ ...S.btnSm, background: '#1B8DB3', color: '#fff', border: 'none' }}>Save</button>
+                            <button onClick={() => { setEditingVisit(null); setEditForm(null); }} style={S.btnSm}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={String(v._id)} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                        <td style={{ ...S.td, fontWeight: 600 }}>{v.memberName}</td>
+                        <td style={{ ...S.td, fontSize: 12, color: '#666' }}>{v.service}</td>
+                        <td style={{ ...S.td, fontSize: 13, fontWeight: 700, color: '#1B8DB3' }}>${v.rateCharged}</td>
+                        <td style={{ ...S.td, fontSize: 12, color: '#888' }}>{v.therapist || '—'}</td>
+                        <td style={{ ...S.td, fontSize: 11, color: '#aaa' }}>{new Date(v.visitDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {new Date(v.visitDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <span style={S.alink} onClick={() => startEdit(v)}>Edit</span>
+                            <span style={{ ...S.alink, color: '#A32D2D' }} onClick={() => deleteVisit(v._id)}>Delete</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
