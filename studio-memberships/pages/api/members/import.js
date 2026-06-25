@@ -1,12 +1,11 @@
 // pages/api/members/import.js
 // Handles CSV import from Acuity client export
 // Columns: First Name, Last Name, Phone, Email, Notes, Days Since Last Appointment, Banned
-
+// SAFE: never overwrites existing pkg, status, or source if already set
 import clientPromise from '../../../lib/mongodb';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
-
   try {
     const { members: rows } = req.body;
     if (!Array.isArray(rows)) return res.status(400).json({ error: 'Invalid data' });
@@ -32,43 +31,66 @@ export default async function handler(req, res) {
       if (banned) { skipped++; continue; }
       if (!firstName || firstName === "'-" || firstName === '-') { skipped++; continue; }
 
-      // Determine status based on days since last appointment
-      let status = 'active';
-      if (daysSince !== null && daysSince > 90) {
-        status = 'paused';
-      }
-
-      const memberDoc = {
-        firstName,
-        lastName,
-        email: email || null,
-        phone: phone || null,
-        notes,
-        status,
-        daysSinceLastAppt: daysSince,
-        pkg: '',
-        credits: null,
-        billing: null,
-        card: null,
-        source: 'acuity_csv',
-        createdAt: new Date(),
-      };
-
       if (email) {
         const existing = await col.findOne({ email });
         if (existing) {
-          await col.updateOne({ email }, { $set: { ...memberDoc, createdAt: existing.createdAt } });
+          // SAFE UPDATE — only update contact info and visit recency
+          // NEVER overwrite pkg, status, source, or billing if already set
+          const safeUpdate = {
+            firstName,
+            lastName,
+            phone: phone || existing.phone || null,
+            notes: notes || existing.notes || '',
+            daysSinceLastAppt: daysSince,
+            // Only update status if member has no package and status is still default
+            ...(!existing.pkg && existing.status !== 'active' ? { status: daysSince !== null && daysSince > 90 ? 'paused' : 'active' } : {}),
+          };
+          await col.updateOne({ email }, { $set: safeUpdate });
           updated++;
         } else {
-          await col.insertOne(memberDoc);
+          // New member — insert with default status based on days since visit
+          const status = daysSince !== null && daysSince > 90 ? 'paused' : 'active';
+          await col.insertOne({
+            firstName,
+            lastName,
+            email: email || null,
+            phone: phone || null,
+            notes,
+            status,
+            daysSinceLastAppt: daysSince,
+            pkg: '',
+            credits: null,
+            billing: null,
+            card: null,
+            source: 'acuity_csv',
+            createdAt: new Date(),
+          });
           inserted++;
         }
       } else {
+        // No email — match by full name only, skip if already exists
         const existing = await col.findOne({ firstName, lastName });
         if (!existing) {
-          await col.insertOne(memberDoc);
+          const status = daysSince !== null && daysSince > 90 ? 'paused' : 'active';
+          await col.insertOne({
+            firstName,
+            lastName,
+            email: null,
+            phone: phone || null,
+            notes,
+            status,
+            daysSinceLastAppt: daysSince,
+            pkg: '',
+            credits: null,
+            billing: null,
+            card: null,
+            source: 'acuity_csv',
+            createdAt: new Date(),
+          });
           inserted++;
         } else {
+          // Already exists, just update days since last appt
+          await col.updateOne({ firstName, lastName }, { $set: { daysSinceLastAppt: daysSince } });
           skipped++;
         }
       }
