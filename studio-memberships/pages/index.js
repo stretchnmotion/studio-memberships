@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import Papa from 'papaparse';
 
 const PACKAGES = [
   { name: 'Intro session', price: 58, sessions: 1, type: 'Stretch therapy', notes: '25-min session, first visit' },
@@ -25,6 +24,7 @@ function StatusBadge({ status }) {
     walkin:    { bg: '#EEF2FF', color: '#4338CA', label: 'Walk-in' },
     frequent:  { bg: '#FDF4FF', color: '#7C3AED', label: 'Frequent Visitor' },
     og:        { bg: '#FFFBEB', color: '#92400E', label: '⭐ OG' },
+    liability: { bg: '#7F1D1D', color: '#FECACA', label: '⚠️ Liability' },
   };
   const s = map[status] || map.active;
   return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{s.label}</span>;
@@ -33,10 +33,13 @@ function StatusBadge({ status }) {
 function FlagPill({ reason }) {
   const map = {
     card: { bg: '#FCEBEB', color: '#A32D2D', label: 'Card declined' },
+    reschedule: { bg: '#E0F2FE', color: '#075985', label: 'Reschedule issue' },
+    cancellation: { bg: '#F1EFE8', color: '#5F5E5A', label: 'Cancellation' },
     expiring: { bg: '#FAEEDA', color: '#854F0B', label: 'Expiring' },
     inactive: { bg: '#E6F1FB', color: '#185FA5', label: 'Inactive' },
     manual: { bg: '#EEEDFE', color: '#534AB7', label: 'Manual' },
     commitment: { bg: '#FFF0E6', color: '#C05B00', label: '2-mo commitment' },
+    liability: { bg: '#7F1D1D', color: '#FECACA', label: '⚠️ Liability' },
   };
   const p = map[reason] || map.manual;
   return <span style={{ background: p.bg, color: p.color, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>{p.label}</span>;
@@ -111,12 +114,11 @@ function Dashboard() {
   const [pkgForm, setPkgForm] = useState({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
   const [newMember, setNewMember] = useState({ firstName: '', lastName: '', email: '', phone: '', pkg: '', start: '', card: '', notes: '', commitmentStart: new Date().toISOString().split('T')[0] });
   const [nmSuccess, setNmSuccess] = useState(false);
-  const [importMsg, setImportMsg] = useState('');
   const [newMembersData, setNewMembersData] = useState([]);
   const [walkInRevenueMonth, setWalkInRevenueMonth] = useState(0);
+  const [revenueHistory, setRevenueHistory] = useState([]);
   const [commitmentChecking, setCommitmentChecking] = useState(false);
   const [loading, setLoading] = useState(true);
-  const fileRef = useRef();
   const searchRef = useRef();
 
   useEffect(() => {
@@ -137,38 +139,67 @@ function Dashboard() {
       .reduce((a, v) => a + (v.rateCharged || 0), 0);
   }
 
+  async function saveRevenueSnapshot(membershipRevenue, walkInRevenue) {
+    try {
+      await fetch('/api/revenue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membershipRevenue,
+          walkInRevenue,
+          totalRevenue: membershipRevenue + walkInRevenue,
+        }),
+      });
+    } catch (e) { console.error(e); }
+  }
+
   async function fetchAll() {
     setLoading(true);
     try {
-      const [mr, fr, nm, vr] = await Promise.all([
+      const [mr, fr, nm, vr, rv] = await Promise.all([
         fetch('/api/members'),
         fetch('/api/flags'),
         fetch('/api/members/commitment-check'),
         fetch('/api/visits'),
+        fetch('/api/revenue'),
       ]);
-      const [md, fd, nmd, vd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json()]);
+      const [md, fd, nmd, vd, rvd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json(), rv.json()]);
       setMembers(Array.isArray(md) ? md : []);
       setFlags(Array.isArray(fd) ? fd : []);
       setNewMembersData(Array.isArray(nmd) ? nmd : []);
-      setWalkInRevenueMonth(calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []));
+      const wirm = calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []);
+      setWalkInRevenueMonth(wirm);
+      setRevenueHistory(Array.isArray(rvd) ? rvd : []);
+      const activePkgs = (Array.isArray(md) ? md : []).filter(m => m.status === 'active');
+      const memRev = activePkgs.reduce((a, m) => {
+        const pkg = PACKAGES.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
+      }, 0);
+      saveRevenueSnapshot(memRev, wirm);
     } catch (e) { console.error(e); }
     setLoading(false);
   }
 
-  // Silent refresh — updates data in background without loading flash
   async function refreshSilent() {
     try {
-      const [mr, fr, nm, vr] = await Promise.all([
+      const [mr, fr, nm, vr, rv] = await Promise.all([
         fetch('/api/members'),
         fetch('/api/flags'),
         fetch('/api/members/commitment-check'),
         fetch('/api/visits'),
+        fetch('/api/revenue'),
       ]);
-      const [md, fd, nmd, vd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json()]);
+      const [md, fd, nmd, vd, rvd] = await Promise.all([mr.json(), fr.json(), nm.json(), vr.json(), rv.json()]);
       setMembers(Array.isArray(md) ? md : []);
       setFlags(Array.isArray(fd) ? fd : []);
       setNewMembersData(Array.isArray(nmd) ? nmd : []);
-      setWalkInRevenueMonth(calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []));
+      const wirm = calcMonthWalkInRevenue(Array.isArray(vd) ? vd : []);
+      setWalkInRevenueMonth(wirm);
+      setRevenueHistory(Array.isArray(rvd) ? rvd : []);
+      const activePkgs = (Array.isArray(md) ? md : []).filter(m => m.status === 'active');
+      const memRev = activePkgs.reduce((a, m) => {
+        const pkg = PACKAGES.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
+      }, 0);
+      saveRevenueSnapshot(memRev, wirm);
     } catch (e) { console.error(e); }
   }
 
@@ -184,7 +215,8 @@ function Dashboard() {
   function openFlags() { return flags.filter(f => !f.resolved); }
   function memberFlags(id) { return flags.filter(f => !f.resolved && String(f.memberId) === String(id)); }
   function cardFlags() { return openFlags().filter(f => f.reason === 'card'); }
-  function otherFlags() { return openFlags().filter(f => f.reason !== 'card' && f.reason !== 'commitment'); }
+  function liabilityFlags() { return openFlags().filter(f => f.reason === 'liability'); }
+  function otherFlags() { return openFlags().filter(f => !['card', 'commitment', 'liability'].includes(f.reason)); }
   function commitmentFlags() { return openFlags().filter(f => f.reason === 'commitment'); }
 
   function nav(p) { setPage(p); setSearch(''); setShowSearchDrop(false); setShowFlagModal(false); setShowPkgModal(false); }
@@ -202,7 +234,6 @@ function Dashboard() {
     if (!newMember.firstName || !newMember.lastName || !newMember.email) { alert('Name and email are required.'); return; }
     const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newMember, credits: 0, status: 'active', createdAt: new Date(), commitmentStart: newMember.commitmentStart || new Date().toISOString().split('T')[0] }) });
     const doc = await res.json();
-    // Update local state instantly — no refresh needed
     setMembers(prev => [...prev, doc]);
     if (newMember.commitmentStart) {
       const start = new Date(newMember.commitmentStart);
@@ -235,7 +266,6 @@ function Dashboard() {
     if (!flagForm.memberId) { alert('Select a member.'); return; }
     const res = await fetch('/api/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...flagForm, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }) });
     const doc = await res.json();
-    // Instant local update
     setFlags(prev => [doc, ...prev]);
     setShowFlagModal(false);
     setFlagForm({ memberId: '', reason: 'card', note: '' });
@@ -252,40 +282,23 @@ function Dashboard() {
     setShowPkgModal(false); setPkgForm({ name: '', price: '', sessions: '', type: 'Stretch therapy', notes: '' });
   }
 
-  function handleCSV(e) {
-    const file = e.target.files[0]; if (!file) return;
-    setImportMsg('');
-    Papa.parse(file, {
-      header: true, skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const res = await fetch('/api/members/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members: results.data }) });
-          const data = await res.json();
-          setImportMsg(`✓ ${data.inserted} new, ${data.updated} updated`);
-          refreshSilent();
-        } catch { setImportMsg('Import failed.'); }
-      }
-    });
-  }
-
   const activeMembers = members.filter(m => m.status === 'active');
   const activeCount = activeMembers.length;
   const openFlagCount = openFlags().length;
-  const expiringCount = members.filter(m => m.status === 'expiring').length;
   const unassignedCount = members.filter(m => !m.pkg || m.pkg === '').length;
   const ogCount = members.filter(m => m.status === 'og').length;
+  const liabilityCount = members.filter(m => m.status === 'liability').length;
   const membershipRevenue = activeMembers.reduce((a, m) => {
     const pkg = packages.find(p => p.name === m.pkg); return a + (pkg ? pkg.price : 0);
   }, 0);
   const revenue = membershipRevenue + walkInRevenueMonth;
 
-  // Package tier breakdown
-  const tierBreakdown = packages.map(p => ({
-    ...p,
-    count: activeMembers.filter(m => m.name === p.name || m.pkg === p.name).length,
-  }));
+  const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
+  const lastMonthSnap = revenueHistory.find(r => r.monthKey !== thisMonthKey);
+  const revenueChangePct = lastMonthSnap && lastMonthSnap.totalRevenue > 0
+    ? Math.round(((revenue - lastMonthSnap.totalRevenue) / lastMonthSnap.totalRevenue) * 100)
+    : null;
 
-  // Filtered members for the members page
   const filteredMembers = members.filter(m => {
     const statusMatch = memberFilter === 'all' ? true :
       memberFilter === 'visitors' ? ['walkin', 'frequent', 'og'].includes(m.status) :
@@ -331,9 +344,7 @@ function Dashboard() {
   function DrewMode() {
     const [tab, setTab] = useState('assign');
 
-    // ── Tab 1: Package Assignment ─────────────────────────────────────────
     function AssignTab() {
-      // Only show unassigned members who visited within 60 days — everyone else is auto-inactive
       const allUnassigned = members.filter(m => !m.pkg || m.pkg === '');
       const unassigned = allUnassigned.filter(m => m.daysSinceLastAppt == null || m.daysSinceLastAppt <= 60);
       const autoInactive = allUnassigned.filter(m => m.daysSinceLastAppt != null && m.daysSinceLastAppt > 60 && m.status !== 'inactive');
@@ -352,7 +363,6 @@ function Dashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { status: 'inactive' } }),
         });
-        // Update local state instantly
         setMembers(prev => prev.map(m =>
           autoInactive.find(x => String(x._id) === String(m._id)) ? { ...m, status: 'inactive' } : m
         ));
@@ -388,7 +398,6 @@ function Dashboard() {
 
       return (
         <div>
-          {/* Auto-clean banner */}
           {!autoCleaned && autoInactive.length > 0 && (
             <div style={{ background: 'linear-gradient(135deg, #FFF7ED, #FEE2C0)', border: '1px solid #FCD34D', borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -452,13 +461,11 @@ function Dashboard() {
       );
     }
 
-    // ── Tab 2: Clean Records ──────────────────────────────────────────────
     function CleanRecordsTab() {
       const [loading, setLoading] = useState(false);
       const [data, setData] = useState(null);
       const [selected, setSelected] = useState(new Set());
       const [deleting, setDeleting] = useState(false);
-      const [done, setDone] = useState(false);
       const [filterOrphans, setFilterOrphans] = useState(true);
 
       async function runCheck() {
@@ -482,13 +489,6 @@ function Dashboard() {
         });
       }
 
-      function selectAll() {
-        const visible = displayList.map(r => r._id);
-        setSelected(new Set(visible));
-      }
-
-      function clearAll() { setSelected(new Set()); }
-
       async function deleteSelected() {
         if (selected.size === 0) return;
         if (!confirm(`Permanently delete ${selected.size} records from studio-memberships? This cannot be undone. Acuity is NOT affected.`)) return;
@@ -500,12 +500,10 @@ function Dashboard() {
             body: JSON.stringify({ ids: Array.from(selected) }),
           });
           const result = await res.json();
-          setDone(true);
           refreshSilent();
           alert(`✓ Deleted ${result.deleted} records from studio-memberships. Acuity unchanged.`);
           setData(null);
           setSelected(new Set());
-          setDone(false);
         } catch (err) {
           alert('Delete failed: ' + err.message);
         }
@@ -528,7 +526,6 @@ function Dashboard() {
 
       return (
         <div>
-          {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Clean Records</div>
@@ -541,7 +538,6 @@ function Dashboard() {
             </button>
           </div>
 
-          {/* Stats */}
           {data && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
               {[
@@ -557,7 +553,6 @@ function Dashboard() {
             </div>
           )}
 
-          {/* Filter + bulk actions */}
           {data && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -572,20 +567,19 @@ function Dashboard() {
                 {selected.size > 0 && (
                   <>
                     <span style={{ fontSize: 12, color: '#888' }}>{selected.size} selected</span>
-                    <button onClick={clearAll} style={{ ...S.btnSm, fontSize: 11 }}>Clear</button>
+                    <button onClick={() => setSelected(new Set())} style={{ ...S.btnSm, fontSize: 11 }}>Clear</button>
                     <button onClick={deleteSelected} disabled={deleting} style={{ ...S.btnSm, background: '#A32D2D', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12 }}>
                       {deleting ? 'Deleting…' : `🗑 Delete ${selected.size}`}
                     </button>
                   </>
                 )}
                 {selected.size === 0 && displayList.length > 0 && (
-                  <button onClick={selectAll} style={{ ...S.btnSm, fontSize: 11 }}>Select all {displayList.length}</button>
+                  <button onClick={() => setSelected(new Set(displayList.map(r => r._id)))} style={{ ...S.btnSm, fontSize: 11 }}>Select all {displayList.length}</button>
                 )}
               </div>
             </div>
           )}
 
-          {/* Results list */}
           {!data && !loading && (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: '#aaa' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
@@ -673,7 +667,6 @@ function Dashboard() {
           <button style={S.btn} onClick={() => nav('dashboard')}>Exit</button>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: 2, marginBottom: 24, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
           {[
             { key: 'assign', label: `📋 Assign Packages (${members.filter(m => !m.pkg || m.pkg === '').length})` },
@@ -701,10 +694,13 @@ function Dashboard() {
       <Head>
         <title>Stretch N Motion Members</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/favicon-32.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#1B8DB3" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.8.0/dist/tabler-icons.min.css" />
       </Head>
       <div style={S.app}>
-        {/* Sidebar */}
         <div style={S.sidebar}>
           <div style={S.logo}>
             <div style={{ background: '#fff', borderRadius: 6, padding: '8px 12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
@@ -746,6 +742,9 @@ function Dashboard() {
               </div>
             ))}
             <div style={S.navSection}>Tools</div>
+            <div style={{ ...S.navItem, ...(page === 'revenue' ? S.navItemActive : {}) }} onClick={() => nav('revenue')}>
+              <i className="ti ti-chart-line" style={{ fontSize: 15 }} /><span>Revenue Archive</span>
+            </div>
             <div style={{ ...S.navItem, ...(page === 'cleanup' ? S.navItemActive : {}), ...(unassignedCount > 0 ? { color: '#1B8DB3' } : {}) }} onClick={() => nav('cleanup')}>
               <i className="ti ti-shield-check" style={{ fontSize: 15 }} /><span>Admin Master 🏆</span>
               {unassignedCount > 0 && <span style={{ ...S.navBadge, background: '#EBF6FB', color: '#1B8DB3' }}>{unassignedCount}</span>}
@@ -753,11 +752,6 @@ function Dashboard() {
             <div style={{ ...S.navItem, ...(page === 'addmember' ? S.navItemActive : {}) }} onClick={() => nav('addmember')}>
               <i className="ti ti-user-plus" style={{ fontSize: 15 }} /><span>Add member</span>
             </div>
-            <div style={{ ...S.navItem }} onClick={() => fileRef.current.click()}>
-              <i className="ti ti-upload" style={{ fontSize: 15 }} /><span>Import CSV</span>
-              <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSV} />
-            </div>
-            {importMsg && <div style={{ fontSize: 11, color: '#1B8DB3', padding: '4px 18px 8px', lineHeight: 1.4 }}>{importMsg}</div>}
           </div>
           <div style={S.sidebarFooter}>
             <div style={{ fontSize: 10, color: '#aaa' }}>Logged in as</div>
@@ -765,7 +759,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Main */}
         <div style={S.main}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888', fontSize: 14 }}>
@@ -773,7 +766,6 @@ function Dashboard() {
             </div>
           ) : (
             <>
-              {/* Dashboard */}
               {page === 'dashboard' && (
                 <div>
                   <div style={S.pageHeader}>
@@ -783,13 +775,12 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Top metrics */}
                   <div style={S.metrics}>
                     {[
                       { label: 'Active Members', value: activeCount, sub: 'Currently active', color: '#1B8DB3', icon: 'ti-users', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
                       { label: 'Open Flags', value: openFlagCount, sub: 'Need follow-up', color: openFlagCount > 0 ? '#A32D2D' : '#0F6E56', icon: 'ti-flag', bg: openFlagCount > 0 ? 'linear-gradient(135deg, #FFF0F0, #FCEBEB)' : 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                       { label: '⭐ OGs', value: ogCount, sub: 'Long-time loyalists', color: '#92400E', icon: 'ti-award', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' },
-                      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, sub: `Memberships + $${walkInRevenueMonth.toLocaleString()} walk-ins`, color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
+                      { label: 'Revenue (this month)', value: `$${revenue.toLocaleString()}`, sub: revenueChangePct !== null ? `${revenueChangePct >= 0 ? '▲' : '▼'} ${Math.abs(revenueChangePct)}% vs last month` : 'Memberships + walk-ins, not profit', color: '#0F6E56', icon: 'ti-currency-dollar', bg: 'linear-gradient(135deg, #F0FDF4, #E1F5EE)' },
                     ].map((m, i) => (
                       <div key={i} style={{ background: m.bg, borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(0,0,0,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -802,7 +793,30 @@ function Dashboard() {
                     ))}
                   </div>
 
-                  {/* Membership tier breakdown */}
+                  {/* Revenue archive note + breakdown */}
+                  <div style={{ ...S.card, marginBottom: 16, background: 'linear-gradient(135deg, #FAFAFA, #F4F4F4)' }}>
+                    <div style={S.cardTitle}>
+                      <i className="ti ti-chart-line" style={{ fontSize: 13, marginRight: 6, color: '#5F5E5A' }} />
+                      Revenue Breakdown <span style={{ fontSize: 10, color: '#999', fontWeight: 400, marginLeft: 8 }}>this is gross revenue, not net profit — expenses are not subtracted</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 20, marginBottom: 4 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Membership Revenue</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#1B8DB3' }}>${membershipRevenue.toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Walk-in Revenue</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#047857' }}>${walkInRevenueMonth.toLocaleString()}</div>
+                      </div>
+                      {revenueHistory.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.3px' }}>History</div>
+                          <button onClick={() => nav('revenue')} style={{ fontSize: 13, color: '#1B8DB3', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}>View archive →</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div style={{ ...S.card, marginBottom: 16 }}>
                     <div style={S.cardTitle}>
                       <i className="ti ti-chart-bar" style={{ fontSize: 13, marginRight: 6, color: '#1B8DB3' }} />
@@ -829,7 +843,6 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Drew nudge */}
                   {unassignedCount > 0 && (
                     <div style={{ background: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)', border: '1px solid #B5D4E4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
@@ -840,6 +853,7 @@ function Dashboard() {
                     </div>
                   )}
 
+                  <FlagSection title="⚠️ Liability" flagList={liabilityFlags()} color="#7F1D1D" icon="ti-alert-octagon" />
                   <FlagSection title="Commitment Ending" flagList={commitmentFlags()} color="#C05B00" icon="ti-calendar-due" />
                   <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
                   <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
@@ -847,7 +861,6 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* New Members */}
               {page === 'newmembers' && (
                 <div>
                   <div style={S.pageHeader}>
@@ -859,7 +872,6 @@ function Dashboard() {
                       {commitmentChecking ? '⏳ Checking…' : '🔔 Check Commitments'}
                     </button>
                   </div>
-
                   {newMembersData.length === 0 ? (
                     <div style={{ ...S.card, textAlign: 'center', padding: '40px' }}>
                       <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
@@ -868,7 +880,6 @@ function Dashboard() {
                     </div>
                   ) : (
                     <>
-                      {/* Summary stats */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
                         {[
                           { label: 'In Commitment', value: newMembersData.length, color: '#1B8DB3', bg: 'linear-gradient(135deg, #EBF6FB, #D6EEF7)' },
@@ -881,18 +892,13 @@ function Dashboard() {
                           </div>
                         ))}
                       </div>
-
-                      {/* Member cards */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {newMembersData.map(m => {
                           const isUrgent = m.daysLeft <= 7 && m.daysLeft >= 0;
                           const isOverdue = m.daysLeft < 0;
                           const borderColor = isOverdue ? '#A32D2D' : isUrgent ? '#C05B00' : '#1B8DB3';
                           const bgColor = isOverdue ? '#FFFBFB' : isUrgent ? '#FFFCF7' : '#FAFCFE';
-
-                          // Progress bar
                           const progress = Math.min(100, Math.max(0, Math.round((m.daysIn / 60) * 100)));
-
                           return (
                             <div key={String(m._id)} style={{ background: bgColor, border: `1px solid ${borderColor}33`, borderLeft: `3px solid ${borderColor}`, borderRadius: 12, padding: '14px 18px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -914,16 +920,12 @@ function Dashboard() {
                                   </div>
                                 </div>
                               </div>
-
-                              {/* Progress bar */}
                               <div style={{ marginTop: 12 }}>
                                 <div style={{ height: 5, background: '#E8ECF0', borderRadius: 3, overflow: 'hidden' }}>
                                   <div style={{ height: '100%', width: `${progress}%`, background: `linear-gradient(90deg, ${borderColor}88, ${borderColor})`, borderRadius: 3, transition: 'width 0.4s ease' }} />
                                 </div>
                                 <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>{progress}% through commitment · Day {m.daysIn} of 60</div>
                               </div>
-
-                              {/* Actions */}
                               {(isUrgent || isOverdue) && (
                                 <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                                   <button onClick={() => viewMember(m, 'newmembers')} style={S.btnSm}>View Profile</button>
@@ -951,11 +953,8 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Walk-ins & Visitors */}
               {page === 'walkins' && <WalkInsPage members={members} setMembers={setMembers} packages={packages} viewMember={viewMember} styles={S} refreshDashboard={refreshSilent} />}
 
-              {/* Members */}
-              {/* Members */}
               {page === 'members' && (
                 <div>
                   <div style={S.pageHeader}>
@@ -963,20 +962,19 @@ function Dashboard() {
                     <button style={S.btnPrimary} onClick={() => nav('addmember')}><i className="ti ti-user-plus" />Add member</button>
                   </div>
 
-                  {/* Status filter */}
                   <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
                     {[
                       { key: 'active', label: `Active (${members.filter(m => m.status === 'active').length})` },
                       { key: 'paused', label: `Paused (${members.filter(m => m.status === 'paused').length})` },
                       { key: 'expiring', label: `Expiring (${members.filter(m => m.status === 'expiring').length})` },
                       { key: 'visitors', label: `Visitors (${members.filter(m => ['walkin','frequent','og'].includes(m.status)).length})` },
+                      { key: 'liability', label: `⚠️ Liability (${members.filter(m => m.status === 'liability').length})` },
                       { key: 'all', label: `All (${members.length})` },
                     ].map(f => (
-                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s', background: memberFilter === f.key ? '#1B8DB3' : '#fff', color: memberFilter === f.key ? '#fff' : '#666', border: memberFilter === f.key ? '1px solid #1B8DB3' : '1px solid #ddd', boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none' }}>{f.label}</button>
+                      <button key={f.key} onClick={() => setMemberFilter(f.key)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, transition: 'all 0.15s', background: memberFilter === f.key ? (f.key === 'liability' ? '#7F1D1D' : '#1B8DB3') : '#fff', color: memberFilter === f.key ? '#fff' : '#666', border: memberFilter === f.key ? `1px solid ${f.key === 'liability' ? '#7F1D1D' : '#1B8DB3'}` : '1px solid #ddd', boxShadow: memberFilter === f.key ? '0 2px 8px rgba(27,141,179,0.2)' : 'none' }}>{f.label}</button>
                     ))}
                   </div>
 
-                  {/* Package tier filter */}
                   <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                     <button onClick={() => setPkgFilter('all')} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'system-ui, sans-serif', fontWeight: 600, background: pkgFilter === 'all' ? '#2C4A5A' : '#F0F4F7', color: pkgFilter === 'all' ? '#fff' : '#666', border: 'none' }}>All tiers</button>
                     {packages.filter(p => p.sessions > 1).map((p, i) => (
@@ -1003,8 +1001,9 @@ function Dashboard() {
                         ) : filteredMembers.map(m => {
                           const mf = memberFlags(m._id);
                           const hasCardFlag = mf.some(f => f.reason === 'card');
+                          const isLiability = m.status === 'liability';
                           return (
-                            <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0', background: hasCardFlag ? '#FFF8F8' : 'transparent' }}>
+                            <tr key={String(m._id)} style={{ borderBottom: '0.5px solid #f0f0f0', background: isLiability ? '#450A0A11' : hasCardFlag ? '#FFF8F8' : 'transparent' }}>
                               <td style={S.td}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                                   <div style={{ ...S.avatar, ...(hasCardFlag ? { background: '#FCEBEB', color: '#A32D2D' } : {}) }}>{ini(m)}</div>
@@ -1034,7 +1033,6 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Flags */}
               {page === 'flags' && (
                 <div>
                   <div style={S.pageHeader}>
@@ -1048,6 +1046,7 @@ function Dashboard() {
                   </div>
                   {flagTab === 'open' && (
                     <>
+                      <FlagSection title="⚠️ Liability" flagList={liabilityFlags()} color="#7F1D1D" icon="ti-alert-octagon" />
                       <FlagSection title="Commitment Ending" flagList={commitmentFlags()} color="#C05B00" icon="ti-calendar-due" />
                       <FlagSection title="Delinquent Cards" flagList={cardFlags()} color="#A32D2D" icon="ti-credit-card-off" />
                       <FlagSection title="Other Flags" flagList={otherFlags()} color="#854F0B" icon="ti-alert-triangle" />
@@ -1064,7 +1063,7 @@ function Dashboard() {
                               <div style={S.avatar}>{ini(m)}</div>
                               <div>
                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} /><span style={{ background: '#E1F5EE', color: '#0F6E56', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500 }}>Resolved</span></div>
-                                <div style={{ fontSize: 11, color: '#888' }}>Flagged {f.date}</div>
+                                <div style={{ fontSize: 11, color: '#888' }}>{f.note ? `${f.note} · ` : ''}Flagged {f.date}</div>
                               </div>
                             </div>
                           </div>
@@ -1075,7 +1074,58 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Packages */}
+              {page === 'revenue' && (
+                <div>
+                  <div style={S.pageHeader}>
+                    <div>
+                      <div style={S.pageTitle}>Revenue Archive</div>
+                      <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Month-over-month gross revenue. This is NOT net profit — no expenses are deducted.</div>
+                    </div>
+                    <button style={S.btn} onClick={() => nav('dashboard')}>Back to Dashboard</button>
+                  </div>
+                  {revenueHistory.length === 0 ? (
+                    <div style={{ ...S.card, textAlign: 'center', padding: '40px' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
+                      <div style={{ fontSize: 14, color: '#888' }}>No history yet — snapshots are saved automatically each time the dashboard loads</div>
+                    </div>
+                  ) : (
+                    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                      <table style={S.table}>
+                        <thead>
+                          <tr style={{ background: 'linear-gradient(135deg, #F8FAFB, #F0F4F7)' }}>
+                            <th style={S.th}>Month</th>
+                            <th style={S.th}>Membership Rev.</th>
+                            <th style={S.th}>Walk-in Rev.</th>
+                            <th style={S.th}>Total Rev.</th>
+                            <th style={S.th}>vs Prior Month</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {revenueHistory.map((r, i) => {
+                            const prior = revenueHistory[i + 1];
+                            const pct = prior && prior.totalRevenue > 0 ? Math.round(((r.totalRevenue - prior.totalRevenue) / prior.totalRevenue) * 100) : null;
+                            const monthLabel = new Date(r.year, r.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                            return (
+                              <tr key={r.monthKey} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                                <td style={{ ...S.td, fontWeight: 600 }}>{monthLabel}</td>
+                                <td style={{ ...S.td, fontSize: 13, color: '#1B8DB3', fontWeight: 600 }}>${(r.membershipRevenue || 0).toLocaleString()}</td>
+                                <td style={{ ...S.td, fontSize: 13, color: '#047857', fontWeight: 600 }}>${(r.walkInRevenue || 0).toLocaleString()}</td>
+                                <td style={{ ...S.td, fontSize: 14, fontWeight: 800 }}>${(r.totalRevenue || 0).toLocaleString()}</td>
+                                <td style={S.td}>
+                                  {pct !== null ? (
+                                    <span style={{ color: pct >= 0 ? '#0F6E56' : '#A32D2D', fontWeight: 700, fontSize: 12 }}>{pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}%</span>
+                                  ) : <span style={{ color: '#ccc', fontSize: 12 }}>—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {page === 'packages' && (
                 <div>
                   <div style={S.pageHeader}>
@@ -1101,10 +1151,8 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Member Cleanup */}
               {page === 'cleanup' && <DrewMode />}
 
-              {/* Add Member */}
               {page === 'addmember' && (
                 <div>
                   <div style={S.pageHeader}><div style={S.pageTitle}>Add New Member</div></div>
@@ -1144,7 +1192,6 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Member Detail */}
               {page === 'detail' && detailMember && <MemberDetail
                 member={members.find(x => String(x._id) === String(detailMember._id)) || detailMember}
                 members={members}
@@ -1164,7 +1211,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Flag Modal */}
       {showFlagModal && (
         <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowFlagModal(false); }}>
           <div style={S.modal}>
@@ -1181,24 +1227,38 @@ function Dashboard() {
             <div style={S.formGroup}><label style={S.label}>Reason</label>
               <select style={S.input} value={flagForm.reason} onChange={e => setFlagForm(p => ({ ...p, reason: e.target.value }))}>
                 <option value="card">Card declined</option>
+                <option value="reschedule">Reschedule issue</option>
+                <option value="cancellation">Membership cancellation</option>
                 <option value="commitment">2-month commitment ending</option>
                 <option value="expiring">Membership expiring</option>
                 <option value="inactive">Inactive — no bookings</option>
+                <option value="liability">⚠️ Liability — red flag client</option>
                 <option value="manual">Manual note</option>
               </select>
             </div>
-            <div style={S.formGroup}><label style={S.label}>Note (optional)</label>
-              <input style={S.input} value={flagForm.note} onChange={e => setFlagForm(p => ({ ...p, note: e.target.value }))} placeholder="Add context…" />
+            <div style={S.formGroup}>
+              <label style={S.label}>Note <span style={{ color: '#A32D2D' }}>— please add context, this is what staff will see</span></label>
+              <textarea style={{ ...S.input, resize: 'vertical' }} rows={3} value={flagForm.note} onChange={e => setFlagForm(p => ({ ...p, note: e.target.value }))} placeholder="What happened? Be specific — e.g. 'Card declined 3x, asked to update on file' or 'Yelled at staff over reschedule, handle with caution'" />
             </div>
+            {flagForm.reason === 'liability' && (
+              <div style={{ background: '#7F1D1D11', border: '1px solid #7F1D1D33', borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 12, color: '#7F1D1D' }}>
+                ⚠️ Marking as a liability will also update this member's status so staff see the warning on their profile and in the member list.
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button style={S.btnPrimary} onClick={addFlag}><i className="ti ti-flag" />Save flag</button>
+              <button style={S.btnPrimary} onClick={async () => {
+                await addFlag();
+                if (flagForm.reason === 'liability' && flagForm.memberId) {
+                  const m = members.find(x => String(x._id) === flagForm.memberId);
+                  if (m) await updateMember(m, { status: 'liability' });
+                }
+              }}><i className="ti ti-flag" />Save flag</button>
               <button style={S.btn} onClick={() => setShowFlagModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Package Modal */}
       {showPkgModal && (
         <div style={S.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowPkgModal(false); }}>
           <div style={S.modal}>
@@ -1229,7 +1289,6 @@ function Dashboard() {
     </>
   );
 }
-
 
 function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, refreshDashboard }) {
   const [visitTab, setVisitTab] = useState('log');
@@ -1263,7 +1322,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
 
   useEffect(() => { loadVisits(); }, []);
 
-  // Today's visits derived from allVisits — always accurate, no separate fetch needed
   const todayVisits = allVisits.filter(v => {
     const d = new Date(v.visitDate);
     const now = new Date();
@@ -1335,7 +1393,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
     { key: 'comp', label: 'Comp', amount: 0 },
   ];
   const rateOptions = visitForm.duration === '50' ? rateOptions50 : rateOptions25;
-  const editRateOptions = editForm?.duration === '50' ? rateOptions50 : rateOptions25;
 
   return (
     <div>
@@ -1346,7 +1403,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         </div>
       </div>
 
-      {/* Persistent cash tally — always visible at top */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
         <div style={{ background: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)', borderRadius: 12, padding: '16px 18px', border: '1px solid #A7F3D0' }}>
           <div style={{ fontSize: 11, color: '#047857', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>💵 Today's Cash Tally</div>
@@ -1365,7 +1421,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 20, background: '#F0F4F7', padding: 3, borderRadius: 10, width: 'fit-content' }}>
         {[
           { key: 'log', label: '📋 Log a Visit' },
@@ -1377,7 +1432,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         ))}
       </div>
 
-      {/* Log a Visit */}
       {visitTab === 'log' && (
         <div style={{ maxWidth: 520 }}>
           {visitLogged && (
@@ -1456,7 +1510,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         </div>
       )}
 
-      {/* Visit Log — all visits, editable */}
       {visitTab === 'history' && (
         <div>
           {loadingVisits ? (
@@ -1516,7 +1569,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         </div>
       )}
 
-      {/* Visitor Roster */}
       {visitTab === 'roster' && (
         <div>
           {ogMembers.length > 0 && (
@@ -1589,7 +1641,6 @@ function WalkInsPage({ members, setMembers, packages, viewMember, styles: S, ref
         </div>
       )}
 
-      {/* Add Visitor */}
       {visitTab === 'add' && (
         <div style={{ maxWidth: 520 }}>
           {visitorAdded && (
@@ -1639,6 +1690,7 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
   const m = member;
   const mf = flags.filter(f => !f.resolved && String(f.memberId) === String(m._id));
   const pkg = packages.find(p => p.name === m.pkg);
+  const isLiability = m.status === 'liability';
 
   async function savePkg() {
     await updateMember(m, { pkg: newPkg, status: newPkg ? 'active' : m.status });
@@ -1650,6 +1702,11 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
       <div style={{ marginBottom: 16 }}>
         <button style={S.btnSm} onClick={() => nav(detailBack)}><i className="ti ti-arrow-left" />Back</button>
       </div>
+      {isLiability && (
+        <div style={{ background: '#7F1D1D', color: '#FECACA', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontWeight: 700, fontSize: 13 }}>
+          ⚠️ This member is flagged as a liability — review notes below before booking or engaging
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, background: '#fff', borderRadius: 12, padding: '20px', border: '1px solid #E8ECF0' }}>
         <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #1B8DB3, #0d6a8a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>
           {((m.firstName||'?')[0] + (m.lastName||'?')[0]).toUpperCase()}
@@ -1701,7 +1758,7 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
                 <FlagPill reason={f.reason} />
                 <span style={{ color: '#1D9E75', cursor: 'pointer', fontSize: 11 }} onClick={() => resolveFlag(f)}>Resolve</span>
               </div>
-              {f.note && <div style={{ background: '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: '#666', marginTop: 4 }}>{f.note}</div>}
+              {f.note && <div style={{ background: f.reason === 'liability' ? '#7F1D1D11' : '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: f.reason === 'liability' ? '#7F1D1D' : '#666', marginTop: 4, fontWeight: f.reason === 'liability' ? 600 : 400 }}>{f.note}</div>}
             </div>
           )) : <div style={{ fontSize: 11, color: '#aaa' }}>No open flags.</div>}
           <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}>
@@ -1715,6 +1772,11 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
         <button style={S.btnSm} onClick={() => updateMember(m, { status: 'paused' })}><i className="ti ti-pause" />Pause</button>
         <button style={{ ...S.btnSm, color: '#92400E', borderColor: '#FDE68A' }} onClick={() => updateMember(m, { status: 'og' })}>⭐ Mark OG</button>
         <button style={{ ...S.btnSm, color: '#7C3AED', borderColor: '#E9D5FF' }} onClick={() => updateMember(m, { status: 'frequent' })}>🔄 Frequent Visitor</button>
+        {isLiability ? (
+          <button style={{ ...S.btnSm, color: '#0F6E56', borderColor: '#9FE1CB' }} onClick={() => updateMember(m, { status: 'active' })}>✓ Clear Liability Status</button>
+        ) : (
+          <button style={{ ...S.btnSm, background: '#7F1D1D', color: '#FECACA', border: 'none' }} onClick={() => { if (confirm(`Mark ${fullName(m)} as a liability? This flags them as a red-flag client for all staff.`)) updateMember(m, { status: 'liability' }); }}>⚠️ Mark Liability</button>
+        )}
         <button style={{ ...S.btnSm, color: '#A32D2D', borderColor: '#F7C1C1' }} onClick={() => removeMember(m)}><i className="ti ti-trash" />Remove</button>
       </div>
     </div>
