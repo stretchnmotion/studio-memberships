@@ -4,15 +4,22 @@ import { ObjectId } from 'mongodb';
 export default async function handler(req, res) {
   const client = await clientPromise;
   const db = client.db('studio-memberships');
-  const col = db.collection('members');
+  const col = db.collection('flags');
 
   if (req.method === 'GET') {
-    const members = await col.find({}).sort({ lastName: 1 }).toArray();
-    return res.status(200).json(members);
+    const flags = await col.find({}).sort({ createdAt: -1 }).toArray();
+    return res.status(200).json(flags);
   }
 
   if (req.method === 'POST') {
-    const doc = { ...req.body, createdAt: new Date() };
+    const doc = {
+      memberId: req.body.memberId,
+      reason: req.body.reason || 'manual',
+      note: req.body.note || '',
+      date: req.body.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      resolved: false,
+      createdAt: new Date(),
+    };
     const result = await col.insertOne(doc);
     return res.status(201).json({ ...doc, _id: result.insertedId });
   }
@@ -21,17 +28,6 @@ export default async function handler(req, res) {
     const { _id, ...update } = req.body;
     await col.updateOne({ _id: new ObjectId(String(_id)) }, { $set: update });
     return res.status(200).json({ ok: true });
-  }
-
-  if (req.method === 'PATCH') {
-    const { ids, updates } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No IDs' });
-    const objectIds = ids.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
-    const result = await col.updateMany(
-      { $or: [{ _id: { $in: objectIds } }, { _id: { $in: ids } }] },
-      { $set: updates }
-    );
-    return res.status(200).json({ ok: true, updated: result.modifiedCount });
   }
 
   if (req.method === 'DELETE') {
