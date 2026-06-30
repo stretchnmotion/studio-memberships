@@ -256,7 +256,7 @@ function Dashboard() {
 
   async function removeMember(m) {
     if (!confirm(`Remove ${fullName(m)}? This cannot be undone.`)) return;
-    await fetch(`/api/members?id=${m._id}`, { method: 'DELETE' });
+    await fetch(`/api/members?id=${m._id}`, { method: 'DELETE', headers: { 'x-confirm-delete': 'yes-delete-this-member' } });
     setMembers(prev => prev.filter(x => String(x._id) !== String(m._id)));
     setFlags(prev => prev.filter(f => String(f.memberId) !== String(m._id)));
     nav('members');
