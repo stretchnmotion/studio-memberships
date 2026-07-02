@@ -256,7 +256,7 @@ function Dashboard() {
 
   async function removeMember(m) {
     if (!confirm(`Remove ${fullName(m)}? This cannot be undone.`)) return;
-    await fetch(`/api/members?id=${m._id}`, { method: 'DELETE', headers: { 'x-confirm-delete': 'yes-delete-this-member' } });
+    await fetch(`/api/members?id=${m._id}`, { method: 'DELETE' });
     setMembers(prev => prev.filter(x => String(x._id) !== String(m._id)));
     setFlags(prev => prev.filter(f => String(f.memberId) !== String(m._id)));
     nav('members');
@@ -655,6 +655,129 @@ function Dashboard() {
       );
     }
 
+    function SyncTab() {
+      const [loading, setLoading] = useState(false);
+      const [preview, setPreview] = useState(null);
+      const [confirming, setConfirming] = useState(false);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState(null);
+
+      async function runPreview() {
+        setLoading(true); setError(null); setResult(null); setPreview(null);
+        try {
+          const res = await fetch('/api/sync/acuity');
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          setPreview(data);
+        } catch (e) { setError(e.message); }
+        setLoading(false);
+      }
+
+      async function confirmSync() {
+        setConfirming(true);
+        try {
+          const res = await fetch('/api/sync/acuity', { method: 'POST' });
+          const data = await res.json();
+          setResult(data);
+          setPreview(null);
+          await refreshSilent();
+        } catch (e) { setError(e.message); }
+        setConfirming(false);
+      }
+
+      return (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Sync from Acuity</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Pulls active subscribers from Acuity and adds anyone missing from your member list. Never deletes.</div>
+            </div>
+            <button onClick={runPreview} disabled={loading} style={{ ...S.btnPrimary, fontSize: 13 }}>
+              {loading ? '⏳ Fetching…' : preview ? '🔄 Re-check' : '🔍 Preview Changes'}
+            </button>
+          </div>
+
+          {error && (
+            <div style={{ background: '#FFF0F0', border: '1px solid #F7C1C1', color: '#A32D2D', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13 }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {result && (
+            <div style={{ background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56', padding: '16px 18px', borderRadius: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>✓ Sync complete</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>{result.added} new member{result.added !== 1 ? 's' : ''} added · {result.skipped} already in system</div>
+            </div>
+          )}
+
+          {preview && !result && (
+            <div>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                {[
+                  { label: 'In Acuity', value: preview.acuityTotal, color: '#1B8DB3', bg: '#EBF6FB' },
+                  { label: 'Already in DB', value: preview.alreadyInDB, color: '#0F6E56', bg: '#E1F5EE' },
+                  { label: 'New to Add', value: preview.newMembers.length, color: preview.newMembers.length > 0 ? '#C05B00' : '#0F6E56', bg: preview.newMembers.length > 0 ? '#FFF7ED' : '#E1F5EE' },
+                  { label: 'Not in Acuity', value: preview.notInAcuity.length, color: '#854F0B', bg: '#FAEEDA' },
+                ].map((s, i) => (
+                  <div key={i} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: s.color, fontWeight: 700, textTransform: 'uppercase' }}>{s.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {preview.newMembers.length > 0 && (
+                <div style={{ ...S.card, marginBottom: 16 }}>
+                  <div style={{ ...S.cardTitle, color: '#C05B00' }}>⚡ Will be added ({preview.newMembers.length})</div>
+                  {preview.newMembers.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid #f5f5f5', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{m.firstName} {m.lastName}</span>
+                      <span style={{ color: '#888', fontSize: 11 }}>{m.pkg}</span>
+                    </div>
+                  ))}
+                  <button onClick={confirmSync} disabled={confirming} style={{ ...S.btnPrimary, marginTop: 14, width: '100%', justifyContent: 'center' }}>
+                    {confirming ? '⏳ Adding…' : `✓ Confirm — Add ${preview.newMembers.length} Member${preview.newMembers.length !== 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              )}
+
+              {preview.newMembers.length === 0 && (
+                <div style={{ ...S.card, textAlign: 'center', padding: '32px' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>All Acuity subscribers are in your system</div>
+                  <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Nothing to add</div>
+                </div>
+              )}
+
+              {preview.notInAcuity.length > 0 && (
+                <div style={{ ...S.card }}>
+                  <div style={{ ...S.cardTitle, color: '#854F0B' }}>⚠️ In your DB but not active in Acuity ({preview.notInAcuity.length})</div>
+                  <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>These members may have cancelled. Review manually — nothing is auto-deleted.</div>
+                  {preview.notInAcuity.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid #f5f5f5', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{m.firstName} {m.lastName}</span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ color: '#888', fontSize: 11 }}>{m.pkg}</span>
+                        <span style={{ ...S.alink, fontSize: 11 }} onClick={() => { const mem = members.find(x => String(x._id) === m._id); if (mem) viewMember(mem, 'cleanup'); }}>View →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!preview && !loading && !result && !error && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#aaa' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔄</div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Ready to sync</div>
+              <div style={{ fontSize: 13, marginTop: 6 }}>Hit "Preview Changes" to see what's new in Acuity before committing anything</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div>
         <div style={S.pageHeader}>
@@ -671,6 +794,7 @@ function Dashboard() {
           {[
             { key: 'assign', label: `📋 Assign Packages (${members.filter(m => !m.pkg || m.pkg === '').length})` },
             { key: 'clean', label: '🧹 Clean Records' },
+            { key: 'sync', label: '🔄 Sync from Acuity' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
               padding: '8px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
@@ -685,6 +809,7 @@ function Dashboard() {
 
         {tab === 'assign' && <AssignTab />}
         {tab === 'clean' && <CleanRecordsTab />}
+        {tab === 'sync' && <SyncTab />}
       </div>
     );
   }
