@@ -1,9 +1,6 @@
 import clientPromise from '../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 
-const ACUITY_PROXY = 'https://snm-booking-api.vercel.app/api/acuity';
-
-// Your Acuity subscription product IDs
 const PRODUCT_IDS = [
   { id: 1497341, pkg: '4x/month' },
   { id: 1497732, pkg: '8x/month' },
@@ -22,29 +19,22 @@ async function fetchActiveSubscribers() {
   const allSubscribers = [];
 
   for (const product of PRODUCT_IDS) {
-    // Try proxy first, then direct
-    let subs = null;
-
     try {
-      const r = await fetch(`${ACUITY_PROXY}/products/subscriptions?productID=${product.id}`, { headers });
-      if (r.ok) subs = await r.json();
-    } catch {}
-
-    if (!subs) {
-      try {
-        const r = await fetch(`https://acuityscheduling.com/api/v1/products/subscriptions?productID=${product.id}`, { headers });
-        if (r.ok) subs = await r.json();
-      } catch {}
-    }
-
-    if (Array.isArray(subs)) {
-      // Only active subscriptions, skip junk names
-      const active = subs.filter(s =>
-        s.status === 'active' &&
-        s.firstName && s.firstName.trim() !== '-' && s.firstName.trim() !== '' &&
-        s.lastName && s.lastName.trim() !== '-' && s.lastName.trim() !== ''
-      );
-      active.forEach(s => allSubscribers.push({ ...s, pkg: product.pkg }));
+      const r = await fetch(`https://acuityscheduling.com/api/v1/products/subscriptions?productID=${product.id}`, { headers });
+      if (r.ok) {
+        const subs = await r.json();
+        if (Array.isArray(subs)) {
+          subs
+            .filter(s =>
+              s.status === 'active' &&
+              s.firstName && s.firstName.trim() !== '-' && s.firstName.trim() !== '' &&
+              s.lastName && s.lastName.trim() !== '-' && s.lastName.trim() !== ''
+            )
+            .forEach(s => allSubscribers.push({ ...s, pkg: product.pkg }));
+        }
+      }
+    } catch (e) {
+      console.error(`Product ${product.id} failed:`, e.message);
     }
   }
 
@@ -56,7 +46,6 @@ export default async function handler(req, res) {
   const db = client.db('studio-memberships');
   const col = db.collection('members');
 
-  // Acuity sync
   if (req.query.sync) {
     try {
       const [subscribers, dbMembers] = await Promise.all([
@@ -75,7 +64,7 @@ export default async function handler(req, res) {
 
       for (const s of subscribers) {
         const key = normalizeName(`${s.firstName} ${s.lastName}`);
-        if (seen.has(key)) continue; // dedupe
+        if (seen.has(key)) continue;
         seen.add(key);
 
         if (dbByName[key]) {
