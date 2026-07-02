@@ -1,6 +1,8 @@
 import clientPromise from '../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 
+const ACUITY_PROXY = 'https://snm-booking-api.vercel.app/api/acuity';
+
 const PACKAGE_MAP = {
   '4 sessions a month maintenance': '4x/month',
   '4 sessions a month': '4x/month',
@@ -20,49 +22,55 @@ function normalizeName(str) {
   return (str || '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+async function fetchAcuityClients() {
+  const auth = Buffer.from(`${process.env.ACUITY_USER_ID}:${process.env.ACUITY_API_KEY}`).toString('base64');
+  try {
+    const res = await fetch(`${ACUITY_PROXY}/clients`, {
+      headers: { Authorization: `Basic ${auth}` },
+    });
+    if (res.ok) return res.json();
+  } catch {}
+  const res = await fetch('https://acuityscheduling.com/api/v1/clients', {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!res.ok) throw new Error(`Acuity error ${res.status}`);
+  return res.json();
+}
+
 export default async function handler(req, res) {
   const client = await clientPromise;
   const db = client.db('studio-memberships');
   const col = db.collection('members');
 
-  // Acuity sync — GET /api/members?sync=preview, POST /api/members?sync=confirm
+  // Acuity sync
   if (req.query.sync) {
     try {
-      const auth = Buffer.from(`${process.env.ACUITY_USER_ID}:${process.env.ACUITY_API_KEY}`).toString('base64');
-      const acuityRes = await fetch('https://acuityscheduling.com/api/v1/products/subscriptions?direction=ASC&max=1000', {
-        headers: { 'Authorization': `Basic ${auth}` },
-      });
+      const [acuityClients, dbMembers] = await Promise.all([
+        fetchAcuityClients(),
+        col.find({}).toArray(),
+      ]);
 
-      if (!acuityRes.ok) {
-        const text = await acuityRes.text();
-        return res.status(500).json({ error: `Acuity error ${acuityRes.status}: ${text}` });
-      }
-
-      const subscribers = await acuityRes.json();
-      const active = Array.isArray(subscribers) ? subscribers.filter(s => !s.status || s.status === 'active') : [];
-      const dbMembers = await col.find({}).toArray();
+      const clients = Array.isArray(acuityClients) ? acuityClients : [];
 
       const dbByName = {};
       dbMembers.forEach(m => {
-        const key = normalizeName(`${m.firstName} ${m.lastName}`);
-        dbByName[key] = m;
+        dbByName[normalizeName(`${m.firstName} ${m.lastName}`)] = m;
       });
 
       const newMembers = [];
       const alreadyInDB = [];
 
-      for (const sub of active) {
-        const key = normalizeName(`${sub.firstName} ${sub.lastName}`);
-        const pkg = normalizePkg(sub.productName || sub.name || '');
+      for (const c of clients) {
+        const key = normalizeName(`${c.firstName} ${c.lastName}`);
         if (dbByName[key]) {
-          alreadyInDB.push({ firstName: sub.firstName, lastName: sub.lastName, pkg });
+          alreadyInDB.push({ firstName: c.firstName, lastName: c.lastName });
         } else {
           newMembers.push({
-            firstName: sub.firstName,
-            lastName: sub.lastName,
-            email: sub.email || '',
-            phone: sub.phone || '',
-            pkg,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            email: c.email || '',
+            phone: c.phone || '',
+            pkg: '',
             status: 'active',
             source: 'acuity-sync',
             createdAt: new Date(),
@@ -70,13 +78,19 @@ export default async function handler(req, res) {
         }
       }
 
-      const acuityNames = new Set(active.map(s => normalizeName(`${s.firstName} ${s.lastName}`)));
+      const acuityNames = new Set(clients.map(c => normalizeName(`${c.firstName} ${c.lastName}`)));
       const notInAcuity = dbMembers
         .filter(m => m.status === 'active' && !acuityNames.has(normalizeName(`${m.firstName} ${m.lastName}`)))
         .map(m => ({ _id: String(m._id), firstName: m.firstName, lastName: m.lastName, pkg: m.pkg }));
 
       if (req.query.sync === 'preview') {
-        return res.status(200).json({ newMembers, alreadyInDB: alreadyInDB.length, notInAcuity, acuityTotal: active.length, dbTotal: dbMembers.length });
+        return res.status(200).json({
+          newMembers,
+          alreadyInDB: alreadyInDB.length,
+          notInAcuity,
+          acuityTotal: clients.length,
+          dbTotal: dbMembers.length,
+        });
       }
 
       if (req.query.sync === 'confirm' && req.method === 'POST') {
@@ -86,7 +100,6 @@ export default async function handler(req, res) {
       }
 
       return res.status(400).json({ error: 'Use ?sync=preview (GET) or ?sync=confirm (POST)' });
-
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
