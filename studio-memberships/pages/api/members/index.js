@@ -1,6 +1,8 @@
 import clientPromise from '../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 
+const ACUITY_PROXY = 'https://snm-booking-api.vercel.app/api/acuity';
+
 const PRODUCT_IDS = [
   { id: 1497341, pkg: '4x/month' },
   { id: 1497732, pkg: '8x/month' },
@@ -20,7 +22,7 @@ async function fetchActiveSubscribers() {
 
   for (const product of PRODUCT_IDS) {
     try {
-      const r = await fetch(`https://acuityscheduling.com/api/v1/products/subscriptions?productID=${product.id}`, { headers });
+      const r = await fetch(`${ACUITY_PROXY}?endpoint=products/subscriptions&productID=${product.id}`, { headers });
       if (r.ok) {
         const subs = await r.json();
         if (Array.isArray(subs)) {
