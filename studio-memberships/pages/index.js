@@ -268,7 +268,7 @@ function Dashboard() {
     const doc = await res.json();
     setFlags(prev => [doc, ...prev]);
     setShowFlagModal(false);
-    setFlagForm({ memberId: '', reason: 'card', note: '' });
+    setFlagForm({ memberId: '', reason: 'card', note: '', memberSearch: '' });
   }
 
   async function resolveFlag(f) {
@@ -318,20 +318,22 @@ function Dashboard() {
           <span style={{ marginLeft: 8, background: color + '22', color, borderRadius: 10, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>{flagList.length}</span>
         </div>
         {flagList.map(f => {
-          const m = members.find(x => String(x._id) === String(f.memberId)); if (!m) return null;
+          const m = members.find(x => String(x._id) === String(f.memberId));
+          const displayName = m ? fullName(m) : (f.memberName || 'Unknown member');
+          const avatarLetters = m ? ini(m) : '??';
           return (
             <div key={String(f._id)} style={S.flagRow}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={S.avatar}>{ini(m)}</div>
+                <div style={S.avatar}>{avatarLetters}</div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{fullName(m)}</span><FlagPill reason={f.reason} />
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{displayName}</span><FlagPill reason={f.reason} />
                   </div>
                   <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{f.note || 'No note'} · {f.date}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button style={S.btnSm} onClick={() => viewMember(m, page)}>View</button>
+                {m && <button style={S.btnSm} onClick={() => viewMember(m, page)}>View</button>}
                 <button style={{ ...S.btnSm, color: '#1D9E75', borderColor: '#9FE1CB' }} onClick={() => resolveFlag(f)}>Resolve</button>
               </div>
             </div>
@@ -1037,7 +1039,7 @@ function Dashboard() {
                 <div>
                   <div style={S.pageHeader}>
                     <div style={S.pageTitle}>Flags</div>
-                    <button style={S.btn} onClick={() => { setFlagForm({ memberId: members[0]?._id || '', reason: 'card', note: '' }); setShowFlagModal(true); }}><i className="ti ti-plus" />Add flag</button>
+                    <button style={S.btn} onClick={() => { setFlagForm({ memberId: '', reason: 'card', note: '', memberSearch: '' }); setShowFlagModal(true); }}><i className="ti ti-plus" />Add flag</button>
                   </div>
                   <div style={S.tabs}>
                     {['open', 'resolved'].map(t => (
@@ -1219,10 +1221,36 @@ function Dashboard() {
               <button style={{ ...S.btnSm, border: 'none' }} onClick={() => setShowFlagModal(false)}><i className="ti ti-x" /></button>
             </div>
             <div style={S.formGroup}><label style={S.label}>Member</label>
-              <select style={S.input} value={flagForm.memberId} onChange={e => setFlagForm(p => ({ ...p, memberId: e.target.value }))}>
-                <option value="">Select…</option>
-                {members.map(m => <option key={String(m._id)} value={String(m._id)}>{fullName(m)}</option>)}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={S.input}
+                  placeholder="Search by name…"
+                  value={flagForm.memberSearch || ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setFlagForm(p => ({ ...p, memberSearch: val, memberId: '' }));
+                  }}
+                  autoComplete="off"
+                />
+                {flagForm.memberSearch && !flagForm.memberId && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E0E6EB', borderRadius: 8, zIndex: 200, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', marginTop: 2 }}>
+                    {members
+                      .filter(m => fullName(m).toLowerCase().includes((flagForm.memberSearch || '').toLowerCase()))
+                      .slice(0, 8)
+                      .map(m => (
+                        <div key={String(m._id)} onClick={() => setFlagForm(p => ({ ...p, memberId: String(m._id), memberSearch: fullName(m) }))}
+                          style={{ padding: '9px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '0.5px solid #f5f5f5', display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 600 }}>{fullName(m)}</span>
+                          <span style={{ fontSize: 11, color: '#888' }}>{m.pkg || 'No pkg'}</span>
+                        </div>
+                      ))}
+                    {members.filter(m => fullName(m).toLowerCase().includes((flagForm.memberSearch || '').toLowerCase())).length === 0 && (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>No members found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {flagForm.memberId && <div style={{ fontSize: 11, color: '#0F6E56', marginTop: 4 }}>✓ Selected: {flagForm.memberSearch}</div>}
             </div>
             <div style={S.formGroup}><label style={S.label}>Reason</label>
               <select style={S.input} value={flagForm.reason} onChange={e => setFlagForm(p => ({ ...p, reason: e.target.value }))}>
@@ -1763,7 +1791,7 @@ function MemberDetail({ member, members, packages, flags, nav, detailBack, updat
               {f.note && <div style={{ background: f.reason === 'liability' ? '#7F1D1D11' : '#f5f5f5', borderRadius: 6, padding: '5px 9px', fontSize: 11, color: f.reason === 'liability' ? '#7F1D1D' : '#666', marginTop: 4, fontWeight: f.reason === 'liability' ? 600 : 400 }}>{f.note}</div>}
             </div>
           )) : <div style={{ fontSize: 11, color: '#aaa' }}>No open flags.</div>}
-          <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '' }); setShowFlagModal(true); }}>
+          <button style={{ ...S.btnSm, marginTop: 12 }} onClick={() => { setFlagForm({ memberId: String(m._id), reason: 'card', note: '', memberSearch: fullName(m) }); setShowFlagModal(true); }}>
             <i className="ti ti-flag" />Add flag
           </button>
         </div>
