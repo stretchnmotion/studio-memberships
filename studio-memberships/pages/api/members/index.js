@@ -3,38 +3,52 @@ import { ObjectId } from 'mongodb';
 
 const ACUITY_PROXY = 'https://snm-booking-api.vercel.app/api/acuity';
 
-const PACKAGE_MAP = {
-  '4 sessions a month maintenance': '4x/month',
-  '4 sessions a month': '4x/month',
-  '8 times a month flexibility makeover (stretch or massage)': '8x/month',
-  '8 times a month flexibility makeover': '8x/month',
-  '1st responder 4 pack': '4x/month — First Responder',
-  '1st responder 8 pack': '8x/month — First Responder',
-  '16 sessions a month': '16x/month',
-};
-
-function normalizePkg(name) {
-  if (!name) return null;
-  return PACKAGE_MAP[name.toLowerCase().trim()] || name;
-}
+// Your Acuity subscription product IDs
+const PRODUCT_IDS = [
+  { id: 1497341, pkg: '4x/month' },
+  { id: 1497732, pkg: '8x/month' },
+  { id: 1521706, pkg: '4x/month — First Responder' },
+  { id: 1521713, pkg: '8x/month — First Responder' },
+  { id: 1497733, pkg: '16x/month' },
+];
 
 function normalizeName(str) {
   return (str || '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
-async function fetchAcuityClients() {
+async function fetchActiveSubscribers() {
   const auth = Buffer.from(`${process.env.ACUITY_USER_ID}:${process.env.ACUITY_API_KEY}`).toString('base64');
-  try {
-    const res = await fetch(`${ACUITY_PROXY}/clients`, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-    if (res.ok) return res.json();
-  } catch {}
-  const res = await fetch('https://acuityscheduling.com/api/v1/clients', {
-    headers: { Authorization: `Basic ${auth}` },
-  });
-  if (!res.ok) throw new Error(`Acuity error ${res.status}`);
-  return res.json();
+  const headers = { Authorization: `Basic ${auth}` };
+  const allSubscribers = [];
+
+  for (const product of PRODUCT_IDS) {
+    // Try proxy first, then direct
+    let subs = null;
+
+    try {
+      const r = await fetch(`${ACUITY_PROXY}/products/subscriptions?productID=${product.id}`, { headers });
+      if (r.ok) subs = await r.json();
+    } catch {}
+
+    if (!subs) {
+      try {
+        const r = await fetch(`https://acuityscheduling.com/api/v1/products/subscriptions?productID=${product.id}`, { headers });
+        if (r.ok) subs = await r.json();
+      } catch {}
+    }
+
+    if (Array.isArray(subs)) {
+      // Only active subscriptions, skip junk names
+      const active = subs.filter(s =>
+        s.status === 'active' &&
+        s.firstName && s.firstName.trim() !== '-' && s.firstName.trim() !== '' &&
+        s.lastName && s.lastName.trim() !== '-' && s.lastName.trim() !== ''
+      );
+      active.forEach(s => allSubscribers.push({ ...s, pkg: product.pkg }));
+    }
+  }
+
+  return allSubscribers;
 }
 
 export default async function handler(req, res) {
@@ -45,12 +59,10 @@ export default async function handler(req, res) {
   // Acuity sync
   if (req.query.sync) {
     try {
-      const [acuityClients, dbMembers] = await Promise.all([
-        fetchAcuityClients(),
+      const [subscribers, dbMembers] = await Promise.all([
+        fetchActiveSubscribers(),
         col.find({}).toArray(),
       ]);
-
-      const clients = Array.isArray(acuityClients) ? acuityClients : [];
 
       const dbByName = {};
       dbMembers.forEach(m => {
@@ -59,18 +71,22 @@ export default async function handler(req, res) {
 
       const newMembers = [];
       const alreadyInDB = [];
+      const seen = new Set();
 
-      for (const c of clients) {
-        const key = normalizeName(`${c.firstName} ${c.lastName}`);
+      for (const s of subscribers) {
+        const key = normalizeName(`${s.firstName} ${s.lastName}`);
+        if (seen.has(key)) continue; // dedupe
+        seen.add(key);
+
         if (dbByName[key]) {
-          alreadyInDB.push({ firstName: c.firstName, lastName: c.lastName });
+          alreadyInDB.push({ firstName: s.firstName, lastName: s.lastName, pkg: s.pkg });
         } else {
           newMembers.push({
-            firstName: c.firstName,
-            lastName: c.lastName,
-            email: c.email || '',
-            phone: c.phone || '',
-            pkg: '',
+            firstName: s.firstName,
+            lastName: s.lastName,
+            email: s.email || '',
+            phone: s.phone || '',
+            pkg: s.pkg,
             status: 'active',
             source: 'acuity-sync',
             createdAt: new Date(),
@@ -78,9 +94,9 @@ export default async function handler(req, res) {
         }
       }
 
-      const acuityNames = new Set(clients.map(c => normalizeName(`${c.firstName} ${c.lastName}`)));
+      const subscriberNames = new Set(Array.from(seen));
       const notInAcuity = dbMembers
-        .filter(m => m.status === 'active' && !acuityNames.has(normalizeName(`${m.firstName} ${m.lastName}`)))
+        .filter(m => m.status === 'active' && !subscriberNames.has(normalizeName(`${m.firstName} ${m.lastName}`)))
         .map(m => ({ _id: String(m._id), firstName: m.firstName, lastName: m.lastName, pkg: m.pkg }));
 
       if (req.query.sync === 'preview') {
@@ -88,7 +104,7 @@ export default async function handler(req, res) {
           newMembers,
           alreadyInDB: alreadyInDB.length,
           notInAcuity,
-          acuityTotal: clients.length,
+          acuityTotal: subscribers.length,
           dbTotal: dbMembers.length,
         });
       }
